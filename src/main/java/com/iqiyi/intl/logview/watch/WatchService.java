@@ -66,14 +66,10 @@ public class WatchService {
                     file = new RandomAccessFile(Constants.WATCH_FILE_PATH,"r");
 
                     file.seek(pointer);
-                    StringBuilder msg = new StringBuilder();
                     String msgline = null;
                     while ((msgline = file.readLine()) != null) {
-                        msg.append(new String(msgline.getBytes(StandardCharsets.ISO_8859_1),"utf-8"));
-                    }
-                    if (StringUtils.isNotEmpty(msg)){
-                        //log.info(msg.toString());
-                        sendMessage(sessionMap, msg.toString(), 1);
+                        String msg = new String(msgline.getBytes(StandardCharsets.ISO_8859_1),"utf-8");
+                        sendMessage(sessionMap, msg, 1);
                     }
                     pointer=file.getFilePointer();
                 } catch (IOException e) {
