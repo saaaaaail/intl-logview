@@ -51,7 +51,7 @@ public class WebSocketServer {
             watchService.pauseThread(session);
         }else {
             sessionMap.put(session,socketMessage);
-            watchService.sendMessageToAll(sessionMap,"开始传输日志",1);
+            watchService.sendMessage(session,"开始传输日志",1);
             watchService.readFileSchedules(session,sessionMap);
         }
     }
