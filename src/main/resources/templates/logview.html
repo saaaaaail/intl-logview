@@ -1,0 +1,78 @@
+<!DOCTYPE html>
+<html lang="en" xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="UTF-8">
+    <title>logView</title>
+    <link rel="stylesheet" th:href="@{/webjars/mdui/dist/css/mdui.css}">
+    <script th:src="@{/webjars/jquery/jquery.min.js}"></script>
+    <script th:src="@{/webjars/mdui/dist/js/mdui.js}"></script>
+</head>
+<body class="mdui-theme-primary-indigo mdui-theme-accent-light-blue mdui-appbar-with-toolbar">
+    <div class="mdui-container ">
+        <div class="mdui-appbar mdui-shadow-0 mdui-appbar-fixed mdui-appbar-scroll-hide">
+            <div class="mdui-toolbar mdui-color-black">
+                <span class="mdui-typo-title mdui-text-color-white">日志查看器</span>
+                <div class="mdui-toolbar-spacer"></div>
+                <button class="mdui-btn mdui-btn-raised mdui-ripple mdui-color-theme-accent log-watch-btn" onclick="sendMessageToServer('watch')"><span class=" mdui-text-color-white log-watch-span">查看</span></button>
+                <button class="mdui-btn mdui-btn-raised mdui-ripple mdui-color-theme-accent" onclick="sendMessageToServer('pause')"><span class=" mdui-text-color-white log-pause-span">暂停</span></button>
+                <button class="mdui-btn mdui-btn-raised mdui-ripple mdui-color-theme-accent" onclick="clearMsg()"><span class=" mdui-text-color-white log-clear-span">清屏</span></button>
+            </div>
+        </div>
+    </div>
+    <div class="mdui-container container_text">
+        <div class="log-container">
+
+        </div>
+    </div>
+
+    <script type="text/javascript" th:inline="javascript">
+
+        function webSocket() {
+
+            var webSocket = new WebSocket([[${webSocketUrl}]]);
+
+            webSocket.onopen = function (ev) { console.log("建立webSocket连接"); };
+
+            webSocket.onmessage = function (ev) {
+                console.log("接收到Server端发来的消息");
+                var data = JSON.parse(ev.data) || {};
+
+                var $messageContainer = $('.log-container');
+                switch (data.type) {
+                    //操作暂停按钮
+                    case 0:
+                        if (data.msg === '1') {
+                            $('.log-pause-span').html('继续');
+                        }else if (data.msg === '0'){
+                            $('.log-pause-span').html('暂停');
+                        }
+                        break;
+                    case 1:
+                        $('.log-watch-btn').hide();
+                        $messageContainer.append('<div class="mdui-text-color-black-* log-content" style="font-size:x-large">'+ data.msg +'</div>');
+
+                        break;
+                    default:break;
+                }
+            };
+
+            webSocket.onclose = function (ev) { console.log("关闭webSocket连接"); };
+
+            webSocket.onerror = function(ev) { console.log("webSocket通信异常",ev); };
+
+            return webSocket;
+        }
+
+        var webSocket = webSocket();
+
+        function sendMessageToServer(msg) {
+            webSocket.send(JSON.stringify({msg:msg}))
+        }
+
+        function clearMsg() {
+            $('.log-container').empty();
+        }
+
+    </script>
+</body>
+</html>
