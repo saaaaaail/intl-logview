@@ -16,6 +16,8 @@ import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.io.RandomAccessFile;
 import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.Executors;
@@ -41,7 +43,7 @@ public class WatchService {
 
     private boolean isPause = false;
 
-    public void readFileSchedules(Session host,Map<Session, SocketMessage> sessionMap) throws IOException {
+    public void readFileSchedules(Session host,Map<Session, SocketMessage> sessionMap) {
         log.info("校验是否第一次读取文件");
         synchronized (this){
             String visitsKey = Constants.VISIT_COUNT+host.getId();
@@ -53,19 +55,21 @@ public class WatchService {
             cache.add(visitsKey,1);
         }
 
+        pointer = firstReadFile(sessionMap);
 
-        RandomAccessFile file = new RandomAccessFile(Constants.WATCH_FILE_PATH,"r");
         ScheduledExecutorService scheduledExecutorService = Executors.newScheduledThreadPool(1);
         log.info("开始读取文件");
         scheduledExecutorService.scheduleWithFixedDelay(() -> {
             if (!isPause){
+                RandomAccessFile file = null;
                 try {
+                    file = new RandomAccessFile(Constants.WATCH_FILE_PATH,"r");
 
                     file.seek(pointer);
                     StringBuilder msg = new StringBuilder();
                     String msgline = null;
                     while ((msgline = file.readLine()) != null) {
-                        msg.append(new String(msgline.getBytes(StandardCharsets.ISO_8859_1)));
+                        msg.append(new String(msgline.getBytes(StandardCharsets.ISO_8859_1),"utf-8"));
                     }
                     if (StringUtils.isNotEmpty(msg)){
                         //log.info(msg.toString());
@@ -74,9 +78,15 @@ public class WatchService {
                     pointer=file.getFilePointer();
                 } catch (IOException e) {
                     e.printStackTrace();
+                }finally {
+                    try {
+                        if (file!=null){file.close();}
+                    } catch (IOException e) {
+                        e.printStackTrace();
+                    }
                 }
             }
-        }, 0, 1, TimeUnit.SECONDS);
+        }, 0, 2, TimeUnit.SECONDS);
         String poolKey = Constants.SCHEDULED_POOL+host.getId();
         cache.add(poolKey,scheduledExecutorService);
     }
@@ -122,6 +132,63 @@ public class WatchService {
                 e.printStackTrace();
             }
         });
+    }
+
+    private Long firstReadFile(Map<Session, SocketMessage> sessionMap){
+        RandomAccessFile file = null;
+        List<String> result = new ArrayList<>();
+        Long point = 0L;
+        try {
+            file = new RandomAccessFile(Constants.WATCH_FILE_PATH,"r");
+            Long fileLength = file.length();
+            point = fileLength-1;
+            int tmp =-1;
+            while (point>=0){
+                tmp = file.read();
+                if (tmp == '\n'){
+                    String msg = null;
+                    if ((msg = file.readLine())!=null){
+                        String msgline = new String(msg.getBytes(StandardCharsets.ISO_8859_1),"utf-8");
+                        result.add(msgline);
+                        //log.info(msgline);
+                    }
+                }
+                if (point==0){
+                    file.seek(0L);
+                    String msg = null;
+                    if ((msg = file.readLine())!=null){
+                        String msgline = new String(msg.getBytes(StandardCharsets.ISO_8859_1) ,"utf-8");
+                        result.add(msgline);
+                        //log.info(msgline);
+                    }
+                    point--;
+                }else {
+                    point--;
+                    file.seek(point);
+                }
+                if (result.size()>=500){
+                    break;
+                }
+            }
+            for (int i=result.size()-1;i>=0;i--){
+                sendMessage(sessionMap,result.get(i),1);
+            }
+            return fileLength-1;
+        } catch (FileNotFoundException e) {
+            e.printStackTrace();
+        } catch (IOException e) {
+            e.printStackTrace();
+        } finally {
+            if (file!=null){
+                try {
+                    file.close();
+                } catch (IOException e) {
+                    e.printStackTrace();
+                }
+            }
+        }
+
+        return null;
     }
 
     private Long getLineNum(RandomAccessFile file,Integer endline){

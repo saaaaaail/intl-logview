@@ -54,11 +54,7 @@ public class WebSocketServer {
         }else {
             sessionMap.put(session,socketMessage);
             watchService.sendMessage(sessionMap,"开始传输日志",1);
-            try {
-                watchService.readFileSchedules(session,sessionMap);
-            } catch (FileNotFoundException e) {
-                e.printStackTrace();
-            }
+            watchService.readFileSchedules(session,sessionMap);
         }
     }
 
