@@ -3,13 +3,11 @@ package com.iqiyi.intl.logview.websocket;
 import com.alibaba.fastjson.JSONObject;
 import com.iqiyi.intl.logview.watch.WatchService;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.ApplicationContext;
 import org.springframework.stereotype.Component;
 
 import javax.websocket.*;
 import javax.websocket.server.ServerEndpoint;
-import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
@@ -39,7 +37,7 @@ public class WebSocketServer {
     public void onOpen(Session session){
         watchService = applicationContext.getBean(WatchService.class);
         sessionMap.put(session,new SocketMessage());
-        watchService.sendMessage(sessionMap,"connecting success:"+sessionMap.keySet().size(),null);
+        watchService.sendMessageToAll(sessionMap,"connecting success:"+sessionMap.keySet().size(),null);
     }
 
     /**
@@ -53,7 +51,7 @@ public class WebSocketServer {
             watchService.pauseThread(session);
         }else {
             sessionMap.put(session,socketMessage);
-            watchService.sendMessage(sessionMap,"开始传输日志",1);
+            watchService.sendMessageToAll(sessionMap,"开始传输日志",1);
             watchService.readFileSchedules(session,sessionMap);
         }
     }

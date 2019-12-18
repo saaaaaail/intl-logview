@@ -5,13 +5,11 @@ import com.iqiyi.intl.logview.cache.Cache;
 import com.iqiyi.intl.logview.constant.Constants;
 import com.iqiyi.intl.logview.websocket.SocketMessage;
 import lombok.extern.slf4j.Slf4j;
-import org.apache.commons.lang3.StringUtils;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.stereotype.Service;
 
 import javax.websocket.Session;
-import java.io.File;
 import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.io.RandomAccessFile;
@@ -20,6 +18,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
@@ -55,7 +54,8 @@ public class WatchService {
             cache.add(visitsKey,1);
         }
 
-        pointer = firstReadFile(sessionMap);
+        //读历史文件
+        pointer = firstReadFile(host);
 
         ScheduledExecutorService scheduledExecutorService = Executors.newScheduledThreadPool(1);
         log.info("开始读取文件");
@@ -69,7 +69,7 @@ public class WatchService {
                     String msgline = null;
                     while ((msgline = file.readLine()) != null) {
                         String msg = new String(msgline.getBytes(StandardCharsets.ISO_8859_1),"utf-8");
-                        sendMessage(sessionMap, msg, 1);
+                        sendMessageToAll(sessionMap, msg, 1);
                     }
                     pointer=file.getFilePointer();
                 } catch (IOException e) {
@@ -115,7 +115,7 @@ public class WatchService {
         }
     }
 
-    public void sendMessage(Map<Session, SocketMessage> sessionMap,String msg,Integer type){
+    public void sendMessageToAll(Map<Session, SocketMessage> sessionMap, String msg, Integer type){
         sessionMap.forEach((session, socketMessage) -> {
             socketMessage.setMsg(msg);
             socketMessage.setType(type);
@@ -130,7 +130,27 @@ public class WatchService {
         });
     }
 
-    private Long firstReadFile(Map<Session, SocketMessage> sessionMap){
+    public void sendMessage(Session session, String msg, Integer type){
+        SocketMessage socketMessage = new SocketMessage();
+        socketMessage.setMsg(msg);
+        socketMessage.setType(type);
+        if (socketMessage.getUser()==null){
+            socketMessage.setUser(UUID.randomUUID().toString().replace("-",""));
+        }
+        try {
+            session.getBasicRemote().sendText(JSONObject.toJSONString(socketMessage));
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+
+    }
+
+    /**
+     * 首先读取历史记录
+     * @param session
+     * @return
+     */
+    private Long firstReadFile(Session session){
         RandomAccessFile file = null;
         List<String> result = new ArrayList<>();
         Long point = 0L;
@@ -166,8 +186,9 @@ public class WatchService {
                     break;
                 }
             }
+
             for (int i=result.size()-1;i>=0;i--){
-                sendMessage(sessionMap,result.get(i),1);
+                sendMessage(session,result.get(i),1);
             }
             return fileLength-1;
         } catch (FileNotFoundException e) {
