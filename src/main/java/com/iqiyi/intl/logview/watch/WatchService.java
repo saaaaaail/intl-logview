@@ -3,8 +3,11 @@ package com.iqiyi.intl.logview.watch;
 import com.alibaba.fastjson.JSONObject;
 import com.iqiyi.intl.logview.cache.Cache;
 import com.iqiyi.intl.logview.constant.Constants;
+import com.iqiyi.intl.logview.enums.LogType;
+import com.iqiyi.intl.logview.enums.TypeEnums;
 import com.iqiyi.intl.logview.websocket.SocketMessage;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.commons.lang3.StringUtils;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.stereotype.Service;
@@ -14,14 +17,13 @@ import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.io.RandomAccessFile;
 import java.nio.charset.StandardCharsets;
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Map;
-import java.util.UUID;
-import java.util.concurrent.ConcurrentHashMap;
+import java.util.*;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
+import java.util.stream.Collectors;
 
 /**
  * @program: intl-logview
@@ -62,14 +64,18 @@ public class WatchService {
         scheduledExecutorService.scheduleWithFixedDelay(() -> {
             if (!isPause){
                 RandomAccessFile file = null;
+                List<String> result = new ArrayList<>();
                 try {
                     file = new RandomAccessFile(Constants.WATCH_FILE_PATH,"r");
 
                     file.seek(pointer);
-                    String msgline = null;
-                    while ((msgline = file.readLine()) != null) {
-                        String msg = new String(msgline.getBytes(StandardCharsets.ISO_8859_1),"utf-8");
-                        sendMessageToAll(sessionMap, msg, 1);
+                    String msgline1 = null;
+                    while ((msgline1 = file.readLine()) != null) {
+                        String msg = new String(msgline1.getBytes(StandardCharsets.ISO_8859_1), StandardCharsets.UTF_8);
+                        if (StringUtils.isNotEmpty(msg)){
+                            result.add(msg);
+                            log.info(msg);
+                        }
                     }
                     pointer=file.getFilePointer();
                 } catch (IOException e) {
@@ -80,6 +86,9 @@ public class WatchService {
                     } catch (IOException e) {
                         e.printStackTrace();
                     }
+                }
+                for (String msg:result){
+                    sendMessageToAll(sessionMap, msg);
                 }
             }
         }, 0, 2, TimeUnit.SECONDS);
@@ -115,34 +124,28 @@ public class WatchService {
         }
     }
 
-    public void sendMessageToAll(Map<Session, SocketMessage> sessionMap, String msg, Integer type){
-        sessionMap.forEach((session, socketMessage) -> {
-            socketMessage.setMsg(msg);
-            socketMessage.setType(type);
-            if (socketMessage.getUser()==null){
-                socketMessage.setUser(UUID.randomUUID().toString().replace("-",""));
-            }
+    public void sendMessageToAll(Map<Session, SocketMessage> sessionMap, String msg){
+        if (msg.trim().startsWith(Constants.IP)){
+            SocketMessage socketMessage = parseMessage(msg);
+            sessionMap.forEach((session, message) -> {
+                try {
+                    session.getBasicRemote().sendText(JSONObject.toJSONString(socketMessage));
+                } catch (IOException e) {
+                    e.printStackTrace();
+                }
+            });
+        }
+    }
+
+    public void sendMessage(Session session, String msg){
+        if (msg.trim().startsWith(Constants.IP)){
+            SocketMessage socketMessage = parseMessage(msg);
             try {
                 session.getBasicRemote().sendText(JSONObject.toJSONString(socketMessage));
             } catch (IOException e) {
                 e.printStackTrace();
             }
-        });
-    }
-
-    public void sendMessage(Session session, String msg, Integer type){
-        SocketMessage socketMessage = new SocketMessage();
-        socketMessage.setMsg(msg);
-        socketMessage.setType(type);
-        if (socketMessage.getUser()==null){
-            socketMessage.setUser(UUID.randomUUID().toString().replace("-",""));
         }
-        try {
-            session.getBasicRemote().sendText(JSONObject.toJSONString(socketMessage));
-        } catch (IOException e) {
-            e.printStackTrace();
-        }
-
     }
 
     /**
@@ -164,7 +167,7 @@ public class WatchService {
                 if (tmp == '\n'){
                     String msg = null;
                     if ((msg = file.readLine())!=null){
-                        String msgline = new String(msg.getBytes(StandardCharsets.ISO_8859_1),"utf-8");
+                        String msgline = new String(msg.getBytes(StandardCharsets.ISO_8859_1), StandardCharsets.UTF_8);
                         result.add(msgline);
                         //log.info(msgline);
                     }
@@ -173,7 +176,7 @@ public class WatchService {
                     file.seek(0L);
                     String msg = null;
                     if ((msg = file.readLine())!=null){
-                        String msgline = new String(msg.getBytes(StandardCharsets.ISO_8859_1) ,"utf-8");
+                        String msgline = new String(msg.getBytes(StandardCharsets.ISO_8859_1) , StandardCharsets.UTF_8);
                         result.add(msgline);
                         //log.info(msgline);
                     }
@@ -182,15 +185,18 @@ public class WatchService {
                     point--;
                     file.seek(point);
                 }
-                if (result.size()>=500){
+                if (result.size()>=300){
                     break;
                 }
             }
 
             for (int i=result.size()-1;i>=0;i--){
-                sendMessage(session,result.get(i),1);
+                if (StringUtils.isNotEmpty(result.get(i))){
+                    sendMessage(session,result.get(i));
+                    log.info(result.get(i));
+                }
             }
-            return fileLength-1;
+            return fileLength;
         } catch (FileNotFoundException e) {
             e.printStackTrace();
         } catch (IOException e) {
@@ -208,40 +214,77 @@ public class WatchService {
         return null;
     }
 
-    private Long getLineNum(RandomAccessFile file,Integer endline){
-        Integer allCountLine=0;
-        Long point = 0L;
-        try {
-            String msgline = null;
-            file.seek(point);
-            while (((msgline = file.readLine()) != null)) {
-                allCountLine++;
-            }
-        } catch (IOException e) {
-            e.printStackTrace();
-        }
-        log.info("总行数:{}",allCountLine);
-        if (allCountLine<=endline){return 0L;}
 
-        Integer startCountLine = allCountLine-endline;
-        log.info("跳过的行数:{}",startCountLine);
-        allCountLine = 0;
-        try{
-            String msgline = null;
-            file.seek(point);
-            while (((msgline = file.readLine()) != null)) {
-                allCountLine++;
-                if (allCountLine>startCountLine){
-                    break;
+
+    private SocketMessage parseMessage(String msg){
+        msg = msg.trim();
+        //公共字段
+        String[] comParam = Constants.commonParams.split(",");
+        ArrayList<String> comList = new ArrayList<>(Arrays.asList(comParam));
+
+        comList.addAll(Arrays.asList(Constants.t_20_params.split(",")));
+        comList.addAll(Arrays.asList(Constants.t_21_params.split(",")));
+        //所有字段
+        List<String> allParamList = comList.stream().distinct().collect(Collectors.toList());
+        //
+        Map<String,String> kvMap = new HashMap<>();
+        Pattern pattern = Pattern.compile("/\\w+\\?");
+        Matcher matcher = pattern.matcher(msg);
+        if (!matcher.find()){
+            return generateMsg(msg,"/\\w+\\?,正则匹配失败", TypeEnums.WRONG_MEG_OPERATE.getCode());
+        }
+        //判断值空
+        String startParams = msg.substring(matcher.end());
+        String paramsStr = startParams.substring(0,startParams.indexOf(' '));
+        String[] kvParams = paramsStr.split("&");
+        System.out.println(JSONObject.toJSONString(kvParams));
+        for (String param : new ArrayList<>(Arrays.asList(kvParams))) {
+            String[] kv = param.split("=");
+            if (kv.length==2){
+                kvMap.put(kv[0],kv[1]);
+            }else {
+                if (allParamList.contains(kv[0])||kv[0].equals("net_work")){
+                    return generateMsg(msg,kv[0]+"字段值为null",TypeEnums.WRONG_MEG_OPERATE.getCode());
                 }
             }
-            point = file.getFilePointer();
-        }catch (IOException e){
-            e.printStackTrace();
         }
-        log.info("起始pointer:{}",point);
+        //判断缺少公共字段
+        for (String com : comList) {
+            if (kvMap.get(com)==null){
+                if (com.equals("ntwk")&&kvMap.get("net_work")!=null){
+                    continue;
+                }
+                return generateMsg(msg,"缺少"+com+"字段",TypeEnums.WRONG_MEG_OPERATE.getCode());
+            }
+        }
+        String logTypeId = kvMap.get("t");
+        ArrayList<String> tList = null;
+        switch (logTypeId){
+            case "20":
+                tList = new ArrayList<>(Arrays.asList(Constants.t_20_params.split(",")));
+                break;
+            case "21":
+                tList = new ArrayList<>(Arrays.asList(Constants.t_21_params.split(",")));
+                break;
+            default:
+                tList = new ArrayList<>();
+                break;
+        }
+        for (String t : tList) {
+            if (kvMap.get(t)==null){
+                return generateMsg(msg,"缺少\""+t+"\"字段",TypeEnums.WRONG_MEG_OPERATE.getCode());
+            }
+        }
 
-        return point;
+        return generateMsg(msg,null,TypeEnums.MESSAGE_OPERATE.getCode());
+    }
+
+    private SocketMessage generateMsg(String msg,String error,Integer type){
+        SocketMessage socketMessage =new SocketMessage();
+        socketMessage.setMsg(msg);
+        socketMessage.setError(error);
+        socketMessage.setType(type);
+        return socketMessage;
     }
 
 }

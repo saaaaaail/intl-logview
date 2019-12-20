@@ -37,7 +37,6 @@ public class WebSocketServer {
     public void onOpen(Session session){
         watchService = applicationContext.getBean(WatchService.class);
         sessionMap.put(session,new SocketMessage());
-        watchService.sendMessageToAll(sessionMap,"connecting success:"+sessionMap.keySet().size(),null);
     }
 
     /**
@@ -51,7 +50,6 @@ public class WebSocketServer {
             watchService.pauseThread(session);
         }else {
             sessionMap.put(session,socketMessage);
-            watchService.sendMessage(session,"开始传输日志",1);
             watchService.readFileSchedules(session,sessionMap);
         }
     }

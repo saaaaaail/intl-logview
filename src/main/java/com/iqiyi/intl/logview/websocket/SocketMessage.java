@@ -17,4 +17,6 @@ public class SocketMessage {
     private String user;
 
     private Integer type;
+
+    private String error;
 }
