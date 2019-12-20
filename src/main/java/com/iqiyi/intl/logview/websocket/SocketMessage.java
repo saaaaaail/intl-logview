@@ -19,4 +19,6 @@ public class SocketMessage {
     private Integer type;
 
     private String error;
+
+    private FilterParams params;
 }

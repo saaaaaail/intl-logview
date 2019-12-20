@@ -5,6 +5,7 @@ import com.iqiyi.intl.logview.cache.Cache;
 import com.iqiyi.intl.logview.constant.Constants;
 import com.iqiyi.intl.logview.enums.LogType;
 import com.iqiyi.intl.logview.enums.TypeEnums;
+import com.iqiyi.intl.logview.websocket.FilterParams;
 import com.iqiyi.intl.logview.websocket.SocketMessage;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
@@ -40,28 +41,53 @@ public class WatchService {
     @Qualifier("localCache")
     private Cache cache;
 
-    private Long pointer;
+    private Long pointer = 0L;
 
     private boolean isPause = false;
 
-    public void readFileSchedules(Session host,Map<Session, SocketMessage> sessionMap) {
+    public void readFileScheduledStart(Session host, Map<Session, SocketMessage> sessionMap,SocketMessage socketMessage) {
         log.info("校验是否第一次读取文件");
+        String poolKey = Constants.SCHEDULED_POOL+host.getId();
         synchronized (this){
-            String visitsKey = Constants.VISIT_COUNT+host.getId();
-            Integer visitCount = (Integer)cache.get(visitsKey);
-            if (visitCount!=null){
+
+            Object o = cache.get(poolKey);
+            if (o!=null){
+                log.info("非第一次读取文件");
                 return;
             }
-            pointer=0L;
-            cache.add(visitsKey,1);
+
+            ScheduledExecutorService scheduledExecutorService = Executors.newScheduledThreadPool(1);
+            cache.add(poolKey,scheduledExecutorService);
         }
 
-        //读历史文件
-        pointer = firstReadFile(host);
+        readFileScheduled(host,sessionMap,socketMessage);
+    }
 
-        ScheduledExecutorService scheduledExecutorService = Executors.newScheduledThreadPool(1);
+    public void readFileScheduledWithFilter(Session host, Map<Session, SocketMessage> sessionMap,SocketMessage socketMessage){
+        String poolKey = Constants.SCHEDULED_POOL + host.getId();
+        synchronized (this){
+            if (cache.get(poolKey)!=null){
+                closePool(host);
+            }
+            ScheduledExecutorService scheduledExecutorService = Executors.newScheduledThreadPool(1);
+            cache.add(poolKey,scheduledExecutorService);
+        }
+        //清屏
+        clearMsg(host);
+        readFileScheduled(host,sessionMap,socketMessage);
+    }
+
+    private void readFileScheduled(Session host, Map<Session, SocketMessage> sessionMap,SocketMessage socketMessage){
+        String poolKey = Constants.SCHEDULED_POOL + host.getId();
+        FilterParams params = socketMessage.getParams();
+
+        //读历史文件
+        pointer = firstReadFile(host,params);
+        //筛选按钮可用
+        enableFilterBtnMsg(host);
+
         log.info("开始读取文件");
-        scheduledExecutorService.scheduleWithFixedDelay(() -> {
+        ((ScheduledExecutorService)cache.get(poolKey)).scheduleWithFixedDelay(() -> {
             if (!isPause){
                 RandomAccessFile file = null;
                 List<String> result = new ArrayList<>();
@@ -71,10 +97,12 @@ public class WatchService {
                     file.seek(pointer);
                     String msgline1 = null;
                     while ((msgline1 = file.readLine()) != null) {
-                        String msg = new String(msgline1.getBytes(StandardCharsets.ISO_8859_1), StandardCharsets.UTF_8);
-                        if (StringUtils.isNotEmpty(msg)){
-                            result.add(msg);
-                            log.info(msg);
+                        if (StringUtils.isNotEmpty(msgline1)){
+                            String msg = new String(msgline1.getBytes(StandardCharsets.ISO_8859_1), StandardCharsets.UTF_8).trim();
+                            if (StringUtils.isEmpty(params.getIp())||StringUtils.isNotEmpty(params.getIp())&&msg.startsWith(params.getIp())){
+                                result.add(msg);
+                                //log.info(msg);
+                            }
                         }
                     }
                     pointer=file.getFilePointer();
@@ -88,21 +116,18 @@ public class WatchService {
                     }
                 }
                 for (String msg:result){
-                    sendMessageToAll(sessionMap, msg);
+                    sendMessageToAll(sessionMap, msg,params);
                 }
             }
         }, 0, 2, TimeUnit.SECONDS);
-        String poolKey = Constants.SCHEDULED_POOL+host.getId();
-        cache.add(poolKey,scheduledExecutorService);
     }
 
-
     public void pauseThread(Session host) throws IOException {
-        String visitsKey = Constants.VISIT_COUNT+host.getId();
-        Integer visitCount = (Integer)cache.get(visitsKey);
-        if (visitCount==null){return;}
+        String poolKey = Constants.SCHEDULED_POOL + host.getId();
+        Object o = cache.get(poolKey);
+        if (o==null){return;}
         SocketMessage socketMessage = new SocketMessage();
-        socketMessage.setType(0);
+        socketMessage.setType(TypeEnums.PAUSE_OPERATE.getCode());
         if (isPause){
             socketMessage.setMsg("0");
             isPause =false;
@@ -115,18 +140,18 @@ public class WatchService {
 
     public void closePool(Session session){
         String poolKey = Constants.SCHEDULED_POOL + session.getId();
-        Object o = cache.get(poolKey);
-        if (o!=null){
+        Object o1 = cache.get(poolKey);
+        if (o1!=null){
             isPause=false;
             cache.remove(poolKey);
-            ((ScheduledExecutorService)o).shutdown();
+            ((ScheduledExecutorService)o1).shutdown();
             log.info("关闭用户的线程池");
         }
     }
 
-    public void sendMessageToAll(Map<Session, SocketMessage> sessionMap, String msg){
-        if (msg.trim().startsWith(Constants.IP)){
-            SocketMessage socketMessage = parseMessage(msg);
+    public void sendMessageToAll(Map<Session, SocketMessage> sessionMap, String msg,FilterParams params){
+        if (filterMessage(msg,params)){
+            SocketMessage socketMessage = parseMessage(msg,params);
             sessionMap.forEach((session, message) -> {
                 try {
                     session.getBasicRemote().sendText(JSONObject.toJSONString(socketMessage));
@@ -137,9 +162,9 @@ public class WatchService {
         }
     }
 
-    public void sendMessage(Session session, String msg){
-        if (msg.trim().startsWith(Constants.IP)){
-            SocketMessage socketMessage = parseMessage(msg);
+    public void sendMessage(Session session, String msg,FilterParams params){
+        if (filterMessage(msg,params)){
+            SocketMessage socketMessage = parseMessage(msg,params);
             try {
                 session.getBasicRemote().sendText(JSONObject.toJSONString(socketMessage));
             } catch (IOException e) {
@@ -148,12 +173,30 @@ public class WatchService {
         }
     }
 
+    public void clearMsg(Session session){
+        SocketMessage socketMessage = generateMsg(null,null,TypeEnums.CLEAR_MSG_OPERATE.getCode());
+        try {
+            session.getBasicRemote().sendText(JSONObject.toJSONString(socketMessage));
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+    }
+
+    public void enableFilterBtnMsg(Session session){
+        SocketMessage socketMessage = generateMsg(null,null,TypeEnums.ENABLE_FILTER_BTN_OPERATE.getCode());
+        try {
+            session.getBasicRemote().sendText(JSONObject.toJSONString(socketMessage));
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+    }
+
     /**
      * 首先读取历史记录
      * @param session
      * @return
      */
-    private Long firstReadFile(Session session){
+    private Long firstReadFile(Session session,FilterParams params){
         RandomAccessFile file = null;
         List<String> result = new ArrayList<>();
         Long point = 0L;
@@ -167,18 +210,26 @@ public class WatchService {
                 if (tmp == '\n'){
                     String msg = null;
                     if ((msg = file.readLine())!=null){
-                        String msgline = new String(msg.getBytes(StandardCharsets.ISO_8859_1), StandardCharsets.UTF_8);
-                        result.add(msgline);
-                        //log.info(msgline);
+                        if (StringUtils.isNotEmpty(msg)){
+                            String msgline = new String(msg.getBytes(StandardCharsets.ISO_8859_1), StandardCharsets.UTF_8).trim();
+                            if (StringUtils.isEmpty(params.getIp())||StringUtils.isNotEmpty(params.getIp())&&msgline.startsWith(params.getIp())){
+                                result.add(msgline);
+                                //log.info(msgline);
+                            }
+                        }
                     }
                 }
                 if (point==0){
                     file.seek(0L);
                     String msg = null;
                     if ((msg = file.readLine())!=null){
-                        String msgline = new String(msg.getBytes(StandardCharsets.ISO_8859_1) , StandardCharsets.UTF_8);
-                        result.add(msgline);
-                        //log.info(msgline);
+                        if (StringUtils.isNotEmpty(msg)){
+                            String msgline = new String(msg.getBytes(StandardCharsets.ISO_8859_1), StandardCharsets.UTF_8).trim();
+                            if (StringUtils.isEmpty(params.getIp())||StringUtils.isNotEmpty(params.getIp())&&msgline.startsWith(params.getIp())){
+                                result.add(msgline);
+                                //log.info(msgline);
+                            }
+                        }
                     }
                     point--;
                 }else {
@@ -191,10 +242,8 @@ public class WatchService {
             }
 
             for (int i=result.size()-1;i>=0;i--){
-                if (StringUtils.isNotEmpty(result.get(i))){
-                    sendMessage(session,result.get(i));
-                    log.info(result.get(i));
-                }
+                sendMessage(session,result.get(i),params);
+                //log.info(result.get(i));
             }
             return fileLength;
         } catch (FileNotFoundException e) {
@@ -215,8 +264,52 @@ public class WatchService {
     }
 
 
+    private boolean filterMessage(String msg,FilterParams params){
+        Map<String,String> kvMap = new HashMap<>();
+        Pattern pattern = Pattern.compile("/\\w+\\?");
+        Matcher matcher = pattern.matcher(msg);
+        if (!matcher.find()){
+            return false;
+        }
+        String startParams = msg.substring(matcher.end());
+        String paramsStr = startParams.substring(0,startParams.indexOf(' '));
+        String[] kvParams = paramsStr.split("&");
+        for (String param : new ArrayList<>(Arrays.asList(kvParams))) {
+            String[] kv = param.split("=");
+            if (kv.length==2){
+                kvMap.put(kv[0],kv[1]);
+            }
+        }
+        if (StringUtils.isNotEmpty(params.getUri())){
+            if (!msg.contains(params.getUri())){
+                return false;
+            }
+        }
+        if (StringUtils.isNotEmpty(params.getBstp())){
+            if (kvMap.get("bstp")==null||kvMap.get("bstp")!=null&&!kvMap.get("bstp").equals(params.getBstp())){
+                return false;
+            }
+        }
+        if (StringUtils.isNotEmpty(params.getT())){
+            if (kvMap.get("t")==null||kvMap.get("t")!=null&&!kvMap.get("t").equals(params.getT())){
+                return false;
+            }
+        }
+        if (StringUtils.isNotEmpty(params.getRpage())){
+            if (kvMap.get("rpage")==null||kvMap.get("rpage")!=null&&!kvMap.get("rpage").equals(params.getRpage())){
+                return false;
+            }
+        }
+        if (StringUtils.isNotEmpty(params.getU())){
+            if (kvMap.get("u")==null||kvMap.get("u")!=null&&!kvMap.get("u").equals(params.getU())){
+                return false;
+            }
+        }
+        return true;
+    }
 
-    private SocketMessage parseMessage(String msg){
+
+    private SocketMessage parseMessage(String msg,FilterParams params){
         msg = msg.trim();
         //公共字段
         String[] comParam = Constants.commonParams.split(",");
@@ -237,7 +330,7 @@ public class WatchService {
         String startParams = msg.substring(matcher.end());
         String paramsStr = startParams.substring(0,startParams.indexOf(' '));
         String[] kvParams = paramsStr.split("&");
-        System.out.println(JSONObject.toJSONString(kvParams));
+        //System.out.println(JSONObject.toJSONString(kvParams));
         for (String param : new ArrayList<>(Arrays.asList(kvParams))) {
             String[] kv = param.split("=");
             if (kv.length==2){

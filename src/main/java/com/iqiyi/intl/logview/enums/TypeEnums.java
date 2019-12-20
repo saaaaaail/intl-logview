@@ -11,7 +11,9 @@ public enum  TypeEnums {
 
     PAUSE_OPERATE(0,"暂停操作"),
     MESSAGE_OPERATE(1,"发消息操作"),
-    WRONG_MEG_OPERATE(2,"错误消息操作")
+    WRONG_MEG_OPERATE(2,"错误消息操作"),
+    CLEAR_MSG_OPERATE(3,"清屏操作"),
+    ENABLE_FILTER_BTN_OPERATE(4,"筛选按钮可用操作"),
     ;
     private Integer code;
     private String name;

@@ -10,10 +10,15 @@
         .wrong-border{
             border-top:1px solid #000000;
             border-bottom:1px solid #000000;}
+        .keepline{
+            width:auto;
+            word-break:keep-all;
+            white-space:nowrap;
+        }
     </style>
 </head>
 <body class="mdui-theme-primary-indigo mdui-theme-accent-light-blue mdui-appbar-with-toolbar">
-    <div class="mdui-container ">
+    <div class="mdui-container-fluid ">
         <div class="mdui-appbar mdui-shadow-0 mdui-appbar-fixed mdui-appbar-scroll-hide">
             <div class="mdui-toolbar mdui-color-black">
                 <span class="mdui-typo-title mdui-text-color-white">日志查看器</span>
@@ -21,6 +26,39 @@
                 <button class="mdui-btn mdui-btn-raised mdui-ripple mdui-color-theme-accent log-watch-btn" onclick="sendMessageToServer('watch')"><span class=" mdui-text-color-white log-watch-span">查看</span></button>
                 <button class="mdui-btn mdui-btn-raised mdui-ripple mdui-color-theme-accent" onclick="sendMessageToServer('pause')"><span class=" mdui-text-color-white log-pause-span">暂停</span></button>
                 <button class="mdui-btn mdui-btn-raised mdui-ripple mdui-color-theme-accent" onclick="clearMsg()"><span class=" mdui-text-color-white log-clear-span">清屏</span></button>
+
+            </div>
+
+        </div>
+        <div class="mdui-panel" mdui-panel>
+            <div class="mdui-panel-item">
+                <div class="mdui-panel-item-header ">
+                    <div class="mdui-panel-item-title">日志筛选项</div>
+                    <i class="mdui-panel-item-arrow mdui-icon material-icons">keyboard_arrow_down</i>
+                </div>
+                <div class="mdui-panel-item-body">
+                    <div id="ip-params" class="mdui-textfield mdui-col-xs-1 keepline">
+                        <input class="mdui-textfield-input" type="text" placeholder="日志来源IP地址"/>
+                    </div>
+                    <div id="uri-params" class="mdui-textfield mdui-col-xs-1 keepline">
+                        <input class="mdui-textfield-input" type="text" placeholder="URI"/>
+                    </div>
+                    <div id="bstp-params" class="mdui-textfield mdui-col-xs-1 keepline">
+                        <input class="mdui-textfield-input" type="text" placeholder="bstp参数"/>
+                    </div>
+                    <div id="t-params" class="mdui-textfield mdui-col-xs-1 keepline">
+                        <input class="mdui-textfield-input" type="text" placeholder="t参数"/>
+                    </div>
+                    <div id="rpage-params" class="mdui-textfield mdui-col-xs-1 keepline">
+                        <input class="mdui-textfield-input" type="text" placeholder="rpage参数"/>
+                    </div>
+                    <div id="u-params" class="mdui-textfield mdui-col-xs-1 keepline">
+                        <input class="mdui-textfield-input" type="text" placeholder="u参数"/>
+                    </div>
+                    <div class="mdui-panel-item-actions ">
+                        <button id="filter-btn" class="mdui-btn mdui-ripple" onclick="sendMessageToServer('rewatch')">过滤一下</button>
+                    </div>
+                </div>
             </div>
         </div>
     </div>
@@ -56,20 +94,26 @@
                     case 1:
                         $('.log-watch-btn').hide();
 
-                        $messageContainer.prepend('<div class="mdui-text-color-black-* log-content" style="font-size:x-large">'+ data.msg +'</div>');
+                        $messageContainer.prepend('<div class="mdui-text-color-black-* keepline log-content" style="font-size:x-large">'+ data.msg +'</div>');
                         if ($messageContainer.children('div').length>320){
                             console.log("$messageContainer.children('div').length{}:",$messageContainer.children('div'));
                             $messageContainer.children(':last-child').remove();
                         }
                         break;
+                    //错误的消息
                     case 2:
                         $('.log-watch-btn').hide();
                         var error = data.error;
-                        $messageContainer.prepend('<div class="mdui-text-color-red-900 wrong-border log-content" mdui-tooltip="{content:\''+error+'\'}" style="font-size:x-large">'+ data.msg +'</div>');
+                        $messageContainer.prepend('<div class="mdui-text-color-red-900 keepline wrong-border log-content" mdui-tooltip="{content:\''+error+'\'}" style="font-size:x-large">'+ data.msg +'</div>');
                         if ($messageContainer.children('div').length>320){
                             console.log("$messageContainer.children('div').length{}:",$messageContainer.children('div'));
                             $messageContainer.children(':last-child').remove();
                         }
+                        break;
+                    //清屏
+                    case 3: clearMsg();break;
+                    //筛选按钮可用
+                    case 4: enableFilterBtn();
                         break;
                     default:break;
                 }
@@ -87,11 +131,43 @@
         var webSocket = webSocket();
 
         function sendMessageToServer(msg) {
-            webSocket.send(JSON.stringify({msg:msg}))
+            var ip = $('#ip-params > input').val();
+            var uri = $('#uri-params > input').val();
+            var bstp = $('#bstp-params > input').val();
+            var t = $('#t-params > input').val();
+            var rpage = $('#rpage-params > input').val();
+            var u = $('#u-params > input').val();
+            if (ip) {
+                ip = ip.trim();
+            }
+            if (uri) {
+                uri = uri.trim();
+            }
+            if (bstp) {
+                bstp = bstp.trim();
+            }
+            if (t) {
+                t = t.trim();
+            }
+            if (rpage) {
+                rpage = rpage.trim();
+            }
+            if (u) {
+                u = u.trim();
+            }
+            var filterParams = {ip:ip,uri:uri,bstp:bstp,t:t,rpage:rpage,u:u};
+            console.log(filterParams);
+            webSocket.send(JSON.stringify({msg:msg,params:filterParams}))
+            $('#filter-btn').attr('disabled','disabled');
         }
+
 
         function clearMsg() {
             $('.log-container').empty();
+        }
+
+        function enableFilterBtn() {
+            $('#filter-btn').removeAttr('disabled');
         }
 
         function isNull(str) {

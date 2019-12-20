@@ -48,9 +48,11 @@ public class WebSocketServer {
         SocketMessage socketMessage = JSONObject.parseObject(jsonStr, SocketMessage.class);
         if (socketMessage.getMsg().equals("pause")){
             watchService.pauseThread(session);
-        }else {
+        }else if (socketMessage.getMsg().equals("watch")){
             sessionMap.put(session,socketMessage);
-            watchService.readFileSchedules(session,sessionMap);
+            watchService.readFileScheduledStart(session,sessionMap,socketMessage);
+        }else if (socketMessage.getMsg().equals("rewatch")){
+            watchService.readFileScheduledWithFilter(session,sessionMap,socketMessage);
         }
     }
 

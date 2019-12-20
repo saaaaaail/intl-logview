@@ -29,4 +29,6 @@ public class Cache {
     public void remove(String key){
         map.remove(key);
     }
+
+    public void clear(){map.clear();}
 }
