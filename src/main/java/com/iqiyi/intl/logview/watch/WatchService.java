@@ -210,21 +210,22 @@ public class WatchService {
                 if (tmp == '\n'){
                     String msg = null;
                     if ((msg = file.readLine())!=null){
-                        if (StringUtils.isNotEmpty(msg)){
-                            String msgline = new String(msg.getBytes(StandardCharsets.ISO_8859_1), StandardCharsets.UTF_8).trim();
-                            if (StringUtils.isEmpty(params.getIp())||StringUtils.isNotEmpty(params.getIp())&&msgline.startsWith(params.getIp())){
+                        String msgline = new String(msg.getBytes(StandardCharsets.ISO_8859_1), StandardCharsets.UTF_8).trim();
+                        if (StringUtils.isNotEmpty(msgline)) {
+                            if (StringUtils.isEmpty(params.getIp()) || StringUtils.isNotEmpty(params.getIp()) && msgline.startsWith(params.getIp())) {
                                 result.add(msgline);
                                 //log.info(msgline);
                             }
                         }
+
                     }
                 }
                 if (point==0){
                     file.seek(0L);
                     String msg = null;
                     if ((msg = file.readLine())!=null){
-                        if (StringUtils.isNotEmpty(msg)){
-                            String msgline = new String(msg.getBytes(StandardCharsets.ISO_8859_1), StandardCharsets.UTF_8).trim();
+                        String msgline = new String(msg.getBytes(StandardCharsets.ISO_8859_1), StandardCharsets.UTF_8).trim();
+                        if (StringUtils.isNotEmpty(msgline)){
                             if (StringUtils.isEmpty(params.getIp())||StringUtils.isNotEmpty(params.getIp())&&msgline.startsWith(params.getIp())){
                                 result.add(msgline);
                                 //log.info(msgline);
