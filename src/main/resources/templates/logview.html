@@ -22,11 +22,11 @@
         <div class="mdui-appbar mdui-shadow-0 mdui-appbar-fixed mdui-appbar-scroll-hide">
             <div class="mdui-toolbar mdui-color-black">
                 <span class="mdui-typo-title mdui-text-color-white">日志查看器</span>
+                <span id="status" class="mdui-text-color-red " style="font-size:small">断开</span>
                 <div class="mdui-toolbar-spacer"></div>
                 <button class="mdui-btn mdui-btn-raised mdui-ripple mdui-color-theme-accent log-watch-btn" onclick="sendMessageToServer('watch')"><span class=" mdui-text-color-white log-watch-span">查看</span></button>
                 <button class="mdui-btn mdui-btn-raised mdui-ripple mdui-color-theme-accent" onclick="sendMessageToServer('pause')"><span class=" mdui-text-color-white log-pause-span">暂停</span></button>
                 <button class="mdui-btn mdui-btn-raised mdui-ripple mdui-color-theme-accent" onclick="clearMsg()"><span class=" mdui-text-color-white log-clear-span">清屏</span></button>
-
             </div>
 
         </div>
@@ -124,6 +124,18 @@
             webSocket.onclose = function (ev) { console.log("关闭webSocket连接"); };
 
             webSocket.onerror = function(ev) { console.log("webSocket通信异常",ev); };
+
+            webSocket.addEventListener('open',function () {
+                $('#status').removeClass('mdui-text-color-red');
+                $('#status').addClass('mdui-text-color-green');
+                $('#status').text('连接');
+            });
+
+            webSocket.addEventListener('close',function () {
+                $('#status').removeClass('mdui-text-color-green');
+                $('#status').addClass('mdui-text-color-red');
+                $('#status').text('断开');
+            })
 
             return webSocket;
         }
