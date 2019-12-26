@@ -69,13 +69,13 @@ public class WatchFileService {
 
         //清屏
         clearMsg(host);
-
+        log.info("清屏");
         FilterParams params = socketMessage.getParams();
         String pattern = socketMessage.getPattern();
         pointer = firstReadFile(host,params,pattern);
         //筛选按钮可用
         enableFilterBtnMsg(host);
-
+        log.info("筛选按钮可用");
         //开始实时读取文件
         startMonitor(host,sessionMap,params,pattern);
 
@@ -157,6 +157,7 @@ public class WatchFileService {
         Long point = 0L;
         try {
             file = new RandomAccessFile(Constants.WATCH_FILE_PATH,"r");
+            log.info("start randomAccessFile");
             Long fileLength = file.length();
             point = fileLength-1;
             int tmp =-1;
@@ -194,9 +195,8 @@ public class WatchFileService {
                 sendMessage(session,result.get(i),params,pattern);
                 //log.info(result.get(i));
             }
+            log.info("end randomAccessFile");
             return fileLength;
-        } catch (FileNotFoundException e) {
-            e.printStackTrace();
         } catch (IOException e) {
             e.printStackTrace();
         } finally {
