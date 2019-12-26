@@ -29,7 +29,7 @@ import java.util.stream.Collectors;
 
 /**
  * @program: intl-logview
- * @description:
+ * @description: 采用定时线程实时监听文件变化
  * @author: yangfan
  * @create: 2019/12/17 11:16
  */
@@ -101,10 +101,7 @@ public class PoolMonitorService {
                     while ((msgline1 = file.readLine()) != null) {
                         if (StringUtils.isNotEmpty(msgline1)){
                             String msg = new String(msgline1.getBytes(StandardCharsets.ISO_8859_1), StandardCharsets.UTF_8).trim();
-                            if (StringUtils.isEmpty(params.getIp())||StringUtils.isNotEmpty(params.getIp())&&msg.startsWith(params.getIp())){
-                                result.add(msg);
-                                //log.info(msg);
-                            }
+                            result.add(msg);
                         }
                     }
                     pointer=file.getFilePointer();
@@ -214,10 +211,7 @@ public class PoolMonitorService {
                     if ((msg = file.readLine())!=null){
                         String msgline = new String(msg.getBytes(StandardCharsets.ISO_8859_1), StandardCharsets.UTF_8).trim();
                         if (StringUtils.isNotEmpty(msgline)) {
-                            if (StringUtils.isEmpty(params.getIp()) || StringUtils.isNotEmpty(params.getIp()) && msgline.startsWith(params.getIp())) {
-                                result.add(msgline);
-                                //log.info(msgline);
-                            }
+                            result.add(msgline);
                         }
 
                     }
@@ -228,10 +222,9 @@ public class PoolMonitorService {
                     if ((msg = file.readLine())!=null){
                         String msgline = new String(msg.getBytes(StandardCharsets.ISO_8859_1), StandardCharsets.UTF_8).trim();
                         if (StringUtils.isNotEmpty(msgline)){
-                            if (StringUtils.isEmpty(params.getIp())||StringUtils.isNotEmpty(params.getIp())&&msgline.startsWith(params.getIp())){
-                                result.add(msgline);
-                                //log.info(msgline);
-                            }
+                            result.add(msgline);
+                            //log.info(msgline);
+
                         }
                     }
                     point--;
@@ -321,7 +314,9 @@ public class PoolMonitorService {
 
 
     private SocketMessage parseMessage(String msg){
-        Set<String> errsb = new LinkedHashSet<>();
+        Set<String> errSet = new LinkedHashSet<>();
+        Set<String> lackSet = new LinkedHashSet<>();
+        Set<String> nullSet = new LinkedHashSet<>();
         msg = msg.trim();
         //公共字段
         String[] comParam = Constants.commonParams.split(",");
@@ -337,7 +332,7 @@ public class PoolMonitorService {
         Pattern pattern = Pattern.compile("/\\w+\\?");
         Matcher matcher = pattern.matcher(msg);
         if (!matcher.find()){
-            errsb.add("/\\w+\\?此正则匹配失败");
+            errSet.add("/\\w+\\?此正则匹配失败");
         }else {
             //判断值空
             String startParams = msg.substring(matcher.end());
@@ -351,7 +346,7 @@ public class PoolMonitorService {
                 }else {
                     if (StringUtils.isNotEmpty(kv[0])&&(allParamList.contains(kv[0])||kv[0].equals("net_work"))){
                         kvMap.put(kv[0],"null");
-                        errsb.add(kv[0]+"字段值为null");
+                        nullSet.add(kv[0]+"字段值为null");
                     }
                 }
             }
@@ -361,7 +356,7 @@ public class PoolMonitorService {
                     if (com.equals("ntwk")&&kvMap.get("net_work")!=null){
                         continue;
                     }
-                    errsb.add("缺少"+com+"字段");
+                    lackSet.add(com);
                 }
             }
         }
@@ -382,16 +377,26 @@ public class PoolMonitorService {
             }
             for (String t : tList) {
                 if (kvMap.get(t)==null){
-                    errsb.add("缺少"+t+"字段");
+                    lackSet.add(t);
                 }
             }
         }
 
+        if (!CollectionUtils.isEmpty(lackSet)){
+            String err = "缺少"+StringUtils.join(lackSet.toArray(new String[0])," , ") +"字段";
+            errSet.add(err);
+        }
 
-        if (CollectionUtils.isEmpty(errsb)){
+        if (!CollectionUtils.isEmpty(nullSet)){
+            String err = StringUtils.join(nullSet.toArray(new String[0])," , ") + "值为null";
+            errSet.add(err);
+        }
+
+
+        if (CollectionUtils.isEmpty(errSet)){
             return generateMsg(msg,null,TypeEnums.MESSAGE_OPERATE.getCode());
         }else {
-            return generateMsg(msg,StringUtils.join(errsb.toArray(new String[0]),"\\n"),TypeEnums.WRONG_MEG_OPERATE.getCode());
+            return generateMsg(msg,StringUtils.join(errSet.toArray(new String[0])," ; "),TypeEnums.WRONG_MEG_OPERATE.getCode());
         }
 
     }

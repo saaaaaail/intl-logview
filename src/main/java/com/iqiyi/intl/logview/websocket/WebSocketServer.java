@@ -2,6 +2,7 @@ package com.iqiyi.intl.logview.websocket;
 
 import com.alibaba.fastjson.JSONObject;
 import com.iqiyi.intl.logview.watch.PoolMonitorService;
+import com.iqiyi.intl.logview.watch.WatchFileService;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.context.ApplicationContext;
 import org.springframework.stereotype.Component;
@@ -27,6 +28,8 @@ public class WebSocketServer {
 
     PoolMonitorService poolMonitorService;
 
+    WatchFileService watchFileService;
+
     private static Map<Session, SocketMessage> sessionMap = new ConcurrentHashMap<>();
 
     /**
@@ -35,7 +38,8 @@ public class WebSocketServer {
      */
     @OnOpen
     public void onOpen(Session session){
-        poolMonitorService = applicationContext.getBean(PoolMonitorService.class);
+        //poolMonitorService = applicationContext.getBean(PoolMonitorService.class);
+        watchFileService = applicationContext.getBean(WatchFileService.class);
         sessionMap.put(session,new SocketMessage());
     }
 
@@ -44,15 +48,18 @@ public class WebSocketServer {
      */
     @OnMessage
     public void onMessage(Session session,String jsonStr) throws IOException {
-        log.info("接收到客户端的消息");
         SocketMessage socketMessage = JSONObject.parseObject(jsonStr, SocketMessage.class);
+        log.info("接收到客户端的消息:{}",socketMessage);
         if (socketMessage.getMsg().equals("pause")){
-            poolMonitorService.pauseThread(session);
+            //poolMonitorService.pauseThread(session);
+            watchFileService.pauseMonitor(session);
         }else if (socketMessage.getMsg().equals("watch")){
             sessionMap.put(session,socketMessage);
-            poolMonitorService.readFileScheduledStart(session,sessionMap,socketMessage);
+            //poolMonitorService.readFileScheduledStart(session,sessionMap,socketMessage);
+            watchFileService.startProcess(session,sessionMap,socketMessage);
         }else if (socketMessage.getMsg().equals("rewatch")){
-            poolMonitorService.readFileScheduledWithFilter(session,sessionMap,socketMessage);
+            //poolMonitorService.readFileScheduledWithFilter(session,sessionMap,socketMessage);
+            watchFileService.startProcess(session,sessionMap,socketMessage);
         }
     }
 
@@ -63,8 +70,9 @@ public class WebSocketServer {
     @OnClose
     public void onClose(Session session) {
         sessionMap.remove(session);
-        poolMonitorService.closePool(session);
+        //poolMonitorService.closePool(session);
         try {
+            watchFileService.closeWatchService(session);
             session.close();
         } catch (IOException e) {
             e.printStackTrace();

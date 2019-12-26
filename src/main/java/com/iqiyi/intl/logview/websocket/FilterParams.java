@@ -11,7 +11,6 @@ import lombok.Data;
 
 @Data
 public class FilterParams {
-    private String ip;
     private String uri;
     private String bstp;
     private String t;

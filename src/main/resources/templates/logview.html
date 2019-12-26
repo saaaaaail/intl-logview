@@ -25,7 +25,7 @@
         <div class="mdui-appbar mdui-shadow-0 mdui-appbar-fixed mdui-appbar-scroll-hide">
             <div class="mdui-toolbar mdui-color-black">
                 <span class="mdui-typo-title mdui-text-color-white">日志查看器</span>
-                <span id="status" class="mdui-text-color-red " style="font-size:small">断开</span>
+                <span id="status" class="mdui-text-color-red " style="font-size:small">已断开</span>
                 <div class="mdui-toolbar-spacer"></div>
                 <button class="mdui-btn mdui-btn-raised mdui-ripple mdui-color-theme-accent log-watch-btn" onclick="sendMessageToServer('watch')"><span class=" mdui-text-color-white log-watch-span">查看</span></button>
                 <button class="mdui-btn mdui-btn-raised mdui-ripple mdui-color-theme-accent" onclick="sendMessageToServer('pause')"><span class=" mdui-text-color-white log-pause-span">暂停</span></button>
@@ -131,14 +131,14 @@
             webSocket.addEventListener('open',function () {
                 $('#status').removeClass('mdui-text-color-red');
                 $('#status').addClass('mdui-text-color-green');
-                $('#status').text('连接');
+                $('#status').text('已连接');
             });
 
             webSocket.addEventListener('close',function () {
                 $('#status').removeClass('mdui-text-color-green');
                 $('#status').addClass('mdui-text-color-red');
-                $('#status').text('断开');
-            })
+                $('#status').text('已断开');
+            });
 
             return webSocket;
         }
@@ -146,16 +146,25 @@
         var webSocket = webSocket();
 
         function sendMessageToServer(msg) {
-            var uri = $('#uri-params > input').val().trim();
-            var bstp = $('#bstp-params > input').val().trim();
-            var t = $('#t-params > input').val().trim();
-            var rpage = $('#rpage-params > input').val().trim();
-            var u = $('#u-params > input').val().trim();
-            var pattern = $('#pattern-params > input').val().trim();
-            var filterParams = {uri:uri,bstp:bstp,t:t,rpage:rpage,u:u};
-            console.log(filterParams);
-            webSocket.send(JSON.stringify({msg:msg,params:filterParams,pattern:pattern}))
-            $('#filter-btn').attr('disabled','disabled');
+            switch (msg) {
+                case "pause":
+                    console.log(msg);
+                    webSocket.send(JSON.stringify({msg:msg}))
+                    break;
+                case "watch":
+                case "rewatch":
+                    var uri = $('#uri-params > input').val().trim();
+                    var bstp = $('#bstp-params > input').val().trim();
+                    var t = $('#t-params > input').val().trim();
+                    var rpage = $('#rpage-params > input').val().trim();
+                    var u = $('#u-params > input').val().trim();
+                    var pattern = $('#pattern-params > input').val().trim();
+                    var filterParams = {uri:uri,bstp:bstp,t:t,rpage:rpage,u:u};
+                    console.log(filterParams);
+                    webSocket.send(JSON.stringify({msg:msg,params:filterParams,pattern:pattern}))
+                    $('#filter-btn').attr('disabled','disabled');
+                    break;
+            }
         }
 
 
