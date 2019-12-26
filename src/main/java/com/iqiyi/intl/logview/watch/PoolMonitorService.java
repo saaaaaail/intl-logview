@@ -12,6 +12,7 @@ import org.apache.commons.lang3.StringUtils;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.stereotype.Service;
+import org.springframework.util.CollectionUtils;
 
 import javax.websocket.Session;
 import java.io.FileNotFoundException;
@@ -35,7 +36,7 @@ import java.util.stream.Collectors;
 
 @Service
 @Slf4j
-public class WatchService {
+public class PoolMonitorService {
 
     @Autowired
     @Qualifier("localCache")
@@ -80,9 +81,10 @@ public class WatchService {
     private void readFileScheduled(Session host, Map<Session, SocketMessage> sessionMap,SocketMessage socketMessage){
         String poolKey = Constants.SCHEDULED_POOL + host.getId();
         FilterParams params = socketMessage.getParams();
+        String pattern = socketMessage.getPattern();
 
         //读历史文件
-        pointer = firstReadFile(host,params);
+        pointer = firstReadFile(host,params,pattern);
         //筛选按钮可用
         enableFilterBtnMsg(host);
 
@@ -116,10 +118,10 @@ public class WatchService {
                     }
                 }
                 for (String msg:result){
-                    sendMessageToAll(sessionMap, msg,params);
+                    sendMessageToAll(sessionMap, msg,params,pattern);
                 }
             }
-        }, 0, 2, TimeUnit.SECONDS);
+        }, 0, 1, TimeUnit.MILLISECONDS);
     }
 
     public void pauseThread(Session host) throws IOException {
@@ -149,9 +151,9 @@ public class WatchService {
         }
     }
 
-    public void sendMessageToAll(Map<Session, SocketMessage> sessionMap, String msg,FilterParams params){
-        if (filterMessage(msg,params)){
-            SocketMessage socketMessage = parseMessage(msg,params);
+    public void sendMessageToAll(Map<Session, SocketMessage> sessionMap, String msg,FilterParams params,String pattern){
+        if (filterMessage(msg,params,pattern)){
+            SocketMessage socketMessage = parseMessage(msg);
             sessionMap.forEach((session, message) -> {
                 try {
                     session.getBasicRemote().sendText(JSONObject.toJSONString(socketMessage));
@@ -162,9 +164,9 @@ public class WatchService {
         }
     }
 
-    public void sendMessage(Session session, String msg,FilterParams params){
-        if (filterMessage(msg,params)){
-            SocketMessage socketMessage = parseMessage(msg,params);
+    public void sendMessage(Session session, String msg,FilterParams params,String pattern){
+        if (filterMessage(msg,params,pattern)){
+            SocketMessage socketMessage = parseMessage(msg);
             try {
                 session.getBasicRemote().sendText(JSONObject.toJSONString(socketMessage));
             } catch (IOException e) {
@@ -196,7 +198,7 @@ public class WatchService {
      * @param session
      * @return
      */
-    private Long firstReadFile(Session session,FilterParams params){
+    private Long firstReadFile(Session session,FilterParams params,String pattern){
         RandomAccessFile file = null;
         List<String> result = new ArrayList<>();
         Long point = 0L;
@@ -243,7 +245,7 @@ public class WatchService {
             }
 
             for (int i=result.size()-1;i>=0;i--){
-                sendMessage(session,result.get(i),params);
+                sendMessage(session,result.get(i),params,pattern);
                 //log.info(result.get(i));
             }
             return fileLength;
@@ -265,10 +267,18 @@ public class WatchService {
     }
 
 
-    private boolean filterMessage(String msg,FilterParams params){
+    private boolean filterMessage(String msg,FilterParams params,String pattern){
         Map<String,String> kvMap = new HashMap<>();
-        Pattern pattern = Pattern.compile("/\\w+\\?");
-        Matcher matcher = pattern.matcher(msg);
+        if (StringUtils.isNotEmpty(pattern)){
+            Pattern patternUri = Pattern.compile(pattern);
+            Matcher matcher = patternUri.matcher(msg);
+            if (matcher.find()) {
+                return true;
+            }
+            return false;
+        }
+        Pattern patternUri = Pattern.compile("/\\w+\\?");
+        Matcher matcher = patternUri.matcher(msg);
         if (!matcher.find()){
             return false;
         }
@@ -310,67 +320,80 @@ public class WatchService {
     }
 
 
-    private SocketMessage parseMessage(String msg,FilterParams params){
+    private SocketMessage parseMessage(String msg){
+        Set<String> errsb = new LinkedHashSet<>();
         msg = msg.trim();
         //公共字段
         String[] comParam = Constants.commonParams.split(",");
         ArrayList<String> comList = new ArrayList<>(Arrays.asList(comParam));
 
-        comList.addAll(Arrays.asList(Constants.t_20_params.split(",")));
-        comList.addAll(Arrays.asList(Constants.t_21_params.split(",")));
+        List<String> allParamList = new ArrayList<>();
+        allParamList.addAll(Arrays.asList(Constants.t_20_params.split(",")));
+        allParamList.addAll(Arrays.asList(Constants.t_21_params.split(",")));
         //所有字段
-        List<String> allParamList = comList.stream().distinct().collect(Collectors.toList());
+        allParamList = allParamList.stream().distinct().collect(Collectors.toList());
         //
         Map<String,String> kvMap = new HashMap<>();
         Pattern pattern = Pattern.compile("/\\w+\\?");
         Matcher matcher = pattern.matcher(msg);
         if (!matcher.find()){
-            return generateMsg(msg,"/\\w+\\?,正则匹配失败", TypeEnums.WRONG_MEG_OPERATE.getCode());
-        }
-        //判断值空
-        String startParams = msg.substring(matcher.end());
-        String paramsStr = startParams.substring(0,startParams.indexOf(' '));
-        String[] kvParams = paramsStr.split("&");
-        //System.out.println(JSONObject.toJSONString(kvParams));
-        for (String param : new ArrayList<>(Arrays.asList(kvParams))) {
-            String[] kv = param.split("=");
-            if (kv.length==2){
-                kvMap.put(kv[0],kv[1]);
-            }else {
-                if (allParamList.contains(kv[0])||kv[0].equals("net_work")){
-                    return generateMsg(msg,kv[0]+"字段值为null",TypeEnums.WRONG_MEG_OPERATE.getCode());
+            errsb.add("/\\w+\\?此正则匹配失败");
+        }else {
+            //判断值空
+            String startParams = msg.substring(matcher.end());
+            String paramsStr = startParams.substring(0,startParams.indexOf(' '));
+            String[] kvParams = paramsStr.split("&");
+            //System.out.println(JSONObject.toJSONString(kvParams));
+            for (String param : new ArrayList<>(Arrays.asList(kvParams))) {
+                String[] kv = param.split("=");
+                if (kv.length==2){
+                    kvMap.put(kv[0],kv[1]);
+                }else {
+                    if (StringUtils.isNotEmpty(kv[0])&&(allParamList.contains(kv[0])||kv[0].equals("net_work"))){
+                        kvMap.put(kv[0],"null");
+                        errsb.add(kv[0]+"字段值为null");
+                    }
                 }
             }
-        }
-        //判断缺少公共字段
-        for (String com : comList) {
-            if (kvMap.get(com)==null){
-                if (com.equals("ntwk")&&kvMap.get("net_work")!=null){
-                    continue;
+            //判断缺少公共字段
+            for (String com : comList) {
+                if (kvMap.get(com)==null){
+                    if (com.equals("ntwk")&&kvMap.get("net_work")!=null){
+                        continue;
+                    }
+                    errsb.add("缺少"+com+"字段");
                 }
-                return generateMsg(msg,"缺少"+com+"字段",TypeEnums.WRONG_MEG_OPERATE.getCode());
-            }
-        }
-        String logTypeId = kvMap.get("t");
-        ArrayList<String> tList = null;
-        switch (logTypeId){
-            case "20":
-                tList = new ArrayList<>(Arrays.asList(Constants.t_20_params.split(",")));
-                break;
-            case "21":
-                tList = new ArrayList<>(Arrays.asList(Constants.t_21_params.split(",")));
-                break;
-            default:
-                tList = new ArrayList<>();
-                break;
-        }
-        for (String t : tList) {
-            if (kvMap.get(t)==null){
-                return generateMsg(msg,"缺少\""+t+"\"字段",TypeEnums.WRONG_MEG_OPERATE.getCode());
             }
         }
 
-        return generateMsg(msg,null,TypeEnums.MESSAGE_OPERATE.getCode());
+        String logTypeId = kvMap.get("t");
+        if (StringUtils.isNotEmpty(logTypeId)){
+            ArrayList<String> tList = null;
+            switch (logTypeId){
+                case "20":
+                    tList = new ArrayList<>(Arrays.asList(Constants.t_20_params.split(",")));
+                    break;
+                case "21":
+                    tList = new ArrayList<>(Arrays.asList(Constants.t_21_params.split(",")));
+                    break;
+                default:
+                    tList = new ArrayList<>();
+                    break;
+            }
+            for (String t : tList) {
+                if (kvMap.get(t)==null){
+                    errsb.add("缺少"+t+"字段");
+                }
+            }
+        }
+
+
+        if (CollectionUtils.isEmpty(errsb)){
+            return generateMsg(msg,null,TypeEnums.MESSAGE_OPERATE.getCode());
+        }else {
+            return generateMsg(msg,StringUtils.join(errsb.toArray(new String[0]),"\\n"),TypeEnums.WRONG_MEG_OPERATE.getCode());
+        }
+
     }
 
     private SocketMessage generateMsg(String msg,String error,Integer type){

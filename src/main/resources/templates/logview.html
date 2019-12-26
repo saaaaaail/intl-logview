@@ -15,6 +15,9 @@
             word-break:keep-all;
             white-space:nowrap;
         }
+        .hover-on{
+            background-color: slategray;
+        }
     </style>
 </head>
 <body class="mdui-theme-primary-indigo mdui-theme-accent-light-blue mdui-appbar-with-toolbar">
@@ -37,9 +40,6 @@
                     <i class="mdui-panel-item-arrow mdui-icon material-icons">keyboard_arrow_down</i>
                 </div>
                 <div class="mdui-panel-item-body">
-                    <div id="ip-params" class="mdui-textfield mdui-col-xs-1 keepline">
-                        <input class="mdui-textfield-input" type="text" placeholder="日志来源IP地址"/>
-                    </div>
                     <div id="uri-params" class="mdui-textfield mdui-col-xs-1 keepline">
                         <input class="mdui-textfield-input" type="text" placeholder="URI"/>
                     </div>
@@ -55,8 +55,13 @@
                     <div id="u-params" class="mdui-textfield mdui-col-xs-1 keepline">
                         <input class="mdui-textfield-input" type="text" placeholder="u参数"/>
                     </div>
+
+                    <div id="pattern-params" class="mdui-textfield mdui-col-xs-9 ">
+                        <input class="mdui-textfield-input" type="text" placeholder="正则表达式过滤" maxlength="140"/>
+                    </div>
                     <div class="mdui-panel-item-actions ">
-                        <button id="filter-btn" class="mdui-btn mdui-ripple" onclick="sendMessageToServer('rewatch')">过滤一下</button>
+                        <button class="mdui-btn mdui-btn-icon" mdui-tooltip="{content: '正则表达式为java写法，正则表达式方式与参数方式互斥',position:'left'}"><i class="mdui-icon material-icons">help</i></button>
+                        <button id="filter-btn" class="mdui-btn mdui-ripple mdui-btn-raised" onclick="sendMessageToServer('rewatch')">过滤一下</button>
                     </div>
                 </div>
             </div>
@@ -79,7 +84,7 @@
             webSocket.onmessage = function (ev) {
                 console.log("接收到Server端发来的消息");
                 var data = JSON.parse(ev.data) || {};
-                //console.log(data);
+                console.log(data);
                 var $messageContainer = $('.log-container');
                 switch (data.type) {
                     //操作暂停按钮
@@ -94,7 +99,7 @@
                     case 1:
                         $('.log-watch-btn').hide();
 
-                        $messageContainer.prepend('<div class="mdui-text-color-black-* keepline log-content" style="font-size:x-large">'+ data.msg +'</div>');
+                        $messageContainer.prepend('<div class="mdui-text-color-black-* keepline log-content"  style="font-size:x-large">'+ data.msg +'</div>');
                         if ($messageContainer.children('div').length>320){
                             console.log("$messageContainer.children('div').length{}:",$messageContainer.children('div'));
                             $messageContainer.children(':last-child').remove();
@@ -104,7 +109,7 @@
                     case 2:
                         $('.log-watch-btn').hide();
                         var error = data.error;
-                        $messageContainer.prepend('<div class="mdui-text-color-red-900 keepline wrong-border log-content" mdui-tooltip="{content:\''+error+'\'}" style="font-size:x-large">'+ data.msg +'</div>');
+                        $messageContainer.prepend('<div class="mdui-text-color-red-900 keepline wrong-border mdui-hoverable log-content" mdui-tooltip="{content:\''+error+'\'}" style="font-size:x-large">'+ data.msg +'</div>');
                         if ($messageContainer.children('div').length>320){
                             console.log("$messageContainer.children('div').length{}:",$messageContainer.children('div'));
                             $messageContainer.children(':last-child').remove();
@@ -117,8 +122,6 @@
                         break;
                     default:break;
                 }
-
-
             };
 
             webSocket.onclose = function (ev) { console.log("关闭webSocket连接"); };
@@ -143,33 +146,15 @@
         var webSocket = webSocket();
 
         function sendMessageToServer(msg) {
-            var ip = $('#ip-params > input').val();
-            var uri = $('#uri-params > input').val();
-            var bstp = $('#bstp-params > input').val();
-            var t = $('#t-params > input').val();
-            var rpage = $('#rpage-params > input').val();
-            var u = $('#u-params > input').val();
-            if (ip) {
-                ip = ip.trim();
-            }
-            if (uri) {
-                uri = uri.trim();
-            }
-            if (bstp) {
-                bstp = bstp.trim();
-            }
-            if (t) {
-                t = t.trim();
-            }
-            if (rpage) {
-                rpage = rpage.trim();
-            }
-            if (u) {
-                u = u.trim();
-            }
-            var filterParams = {ip:ip,uri:uri,bstp:bstp,t:t,rpage:rpage,u:u};
+            var uri = $('#uri-params > input').val().trim();
+            var bstp = $('#bstp-params > input').val().trim();
+            var t = $('#t-params > input').val().trim();
+            var rpage = $('#rpage-params > input').val().trim();
+            var u = $('#u-params > input').val().trim();
+            var pattern = $('#pattern-params > input').val().trim();
+            var filterParams = {uri:uri,bstp:bstp,t:t,rpage:rpage,u:u};
             console.log(filterParams);
-            webSocket.send(JSON.stringify({msg:msg,params:filterParams}))
+            webSocket.send(JSON.stringify({msg:msg,params:filterParams,pattern:pattern}))
             $('#filter-btn').attr('disabled','disabled');
         }
 

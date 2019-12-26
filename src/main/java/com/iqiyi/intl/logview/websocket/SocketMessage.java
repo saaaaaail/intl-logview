@@ -20,5 +20,7 @@ public class SocketMessage {
 
     private String error;
 
+    private String pattern;
+
     private FilterParams params;
 }

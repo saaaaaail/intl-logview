@@ -1,7 +1,7 @@
 package com.iqiyi.intl.logview.websocket;
 
 import com.alibaba.fastjson.JSONObject;
-import com.iqiyi.intl.logview.watch.WatchService;
+import com.iqiyi.intl.logview.watch.PoolMonitorService;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.context.ApplicationContext;
 import org.springframework.stereotype.Component;
@@ -25,7 +25,7 @@ public class WebSocketServer {
 
     private static ApplicationContext applicationContext;
 
-    WatchService watchService ;
+    PoolMonitorService poolMonitorService;
 
     private static Map<Session, SocketMessage> sessionMap = new ConcurrentHashMap<>();
 
@@ -35,7 +35,7 @@ public class WebSocketServer {
      */
     @OnOpen
     public void onOpen(Session session){
-        watchService = applicationContext.getBean(WatchService.class);
+        poolMonitorService = applicationContext.getBean(PoolMonitorService.class);
         sessionMap.put(session,new SocketMessage());
     }
 
@@ -47,12 +47,12 @@ public class WebSocketServer {
         log.info("接收到客户端的消息");
         SocketMessage socketMessage = JSONObject.parseObject(jsonStr, SocketMessage.class);
         if (socketMessage.getMsg().equals("pause")){
-            watchService.pauseThread(session);
+            poolMonitorService.pauseThread(session);
         }else if (socketMessage.getMsg().equals("watch")){
             sessionMap.put(session,socketMessage);
-            watchService.readFileScheduledStart(session,sessionMap,socketMessage);
+            poolMonitorService.readFileScheduledStart(session,sessionMap,socketMessage);
         }else if (socketMessage.getMsg().equals("rewatch")){
-            watchService.readFileScheduledWithFilter(session,sessionMap,socketMessage);
+            poolMonitorService.readFileScheduledWithFilter(session,sessionMap,socketMessage);
         }
     }
 
@@ -63,7 +63,7 @@ public class WebSocketServer {
     @OnClose
     public void onClose(Session session) {
         sessionMap.remove(session);
-        watchService.closePool(session);
+        poolMonitorService.closePool(session);
         try {
             session.close();
         } catch (IOException e) {
