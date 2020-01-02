@@ -70,6 +70,9 @@ public class WatchFileService {
         //清屏
         clearMsg(host);
         log.info("清屏");
+        //恢复暂停操作
+        recoverPause(host);
+
         FilterParams params = socketMessage.getParams();
         String pattern = socketMessage.getPattern();
         pointer = firstReadFile(host,params,pattern);
@@ -100,8 +103,8 @@ public class WatchFileService {
                                 readFile(sessionMap,params,pattern);
                             }
                         }
-                        watchKey.reset();
                     }
+                    watchKey.reset();
                 }
             } catch (InterruptedException e) {
                 e.printStackTrace();
@@ -275,6 +278,16 @@ public class WatchFileService {
 
     public void clearMsg(Session session){
         SocketMessage socketMessage = generateMsg(null,null,TypeEnums.CLEAR_MSG_OPERATE.getCode());
+        try {
+            session.getBasicRemote().sendText(JSONObject.toJSONString(socketMessage));
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+    }
+
+    private void recoverPause(Session session){
+        isPause=false;
+        SocketMessage socketMessage = generateMsg("0",null,TypeEnums.PAUSE_OPERATE.getCode());
         try {
             session.getBasicRemote().sendText(JSONObject.toJSONString(socketMessage));
         } catch (IOException e) {

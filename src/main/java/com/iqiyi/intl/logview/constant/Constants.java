@@ -13,11 +13,11 @@ public class Constants {
     //access.log
     public static final String WATCH_FILE = "access.log";
 
-    public static final String WATCH_FILE_CATEGORY = "/usr/local/nginx/logs/logview/";
+    public static final String WATCH_FILE_CATEGORY = "/var/log/nginx/logview/";
     ///usr/local/nginx/logs/access.log
     ///usr/local/nginx/logs/logview/access.log
     //E:/test/accesslog.txt
-    public static final String WATCH_FILE_PATH = "/usr/local/nginx/logs/logview/access.log";
+    public static final String WATCH_FILE_PATH = "/var/log/nginx/logview/access.log";
 
     public static final String WATCH_SERVICE_KEY = "visit_count_";
 
