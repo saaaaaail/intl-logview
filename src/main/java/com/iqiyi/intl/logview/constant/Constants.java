@@ -11,15 +11,17 @@ public class Constants {
 
     //accesslog.txt
     //access.log
-    public static final String WATCH_FILE = "access.log";
+    public static final String WATCH_FILE = "accesslog.txt";
 
-    public static final String WATCH_FILE_CATEGORY = "/var/log/nginx/logview/";
-    ///usr/local/nginx/logs/access.log
-    ///usr/local/nginx/logs/logview/access.log
+    ///var/log/nginx/logview/
+    public static final String WATCH_FILE_CATEGORY = "E:/test/";
+    ///var/log/nginx/logview/access.log
     //E:/test/accesslog.txt
-    public static final String WATCH_FILE_PATH = "/var/log/nginx/logview/access.log";
+    public static final String WATCH_FILE_PATH = "E:/test/accesslog.txt";
 
-    public static final String WATCH_SERVICE_KEY = "visit_count_";
+    public static final String WATCH_SERVICE_KEY = "watch_service_";
+
+    public static final String FILTER_PARAMS_KEY = "filter_params_";
 
     public static final String SCHEDULED_POOL = "scheduled_pool_";
 

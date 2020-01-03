@@ -20,10 +20,8 @@ import java.io.RandomAccessFile;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.*;
 import java.util.*;
-import java.util.concurrent.Callable;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
-import java.util.concurrent.TimeUnit;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
@@ -52,6 +50,7 @@ public class WatchFileService {
     public void startProcess(Session host, Map<Session, SocketMessage> sessionMap,SocketMessage socketMessage) throws IOException {
         log.info("校验是否第一次读取文件");
         String watchServiceKey = Constants.WATCH_SERVICE_KEY + host.getId();
+        String filterParamsKey = Constants.FILTER_PARAMS_KEY + host.getId();
         String poolKey = Constants.THREAD_POOL+host.getId();
         synchronized (this){
             Object o1 = cache.get(watchServiceKey);
@@ -65,6 +64,7 @@ public class WatchFileService {
             ExecutorService executorService = Executors.newFixedThreadPool(1);
             cache.add(poolKey,executorService);
             cache.add(watchServiceKey,watchService);
+            cache.add(filterParamsKey,socketMessage);
         }
 
         //清屏
@@ -73,18 +73,16 @@ public class WatchFileService {
         //恢复暂停操作
         recoverPause(host);
 
-        FilterParams params = socketMessage.getParams();
-        String pattern = socketMessage.getPattern();
-        pointer = firstReadFile(host,params,pattern);
+        pointer = firstReadFile(host);
         //筛选按钮可用
         enableFilterBtnMsg(host);
         log.info("筛选按钮可用");
         //开始实时读取文件
-        startMonitor(host,sessionMap,params,pattern);
+        startMonitor(host,sessionMap);
 
     }
 
-    public void startMonitor(Session session,Map<Session, SocketMessage> sessionMap,FilterParams params,String pattern) throws IOException {
+    public void startMonitor(Session session,Map<Session, SocketMessage> sessionMap) throws IOException {
         String poolKey = Constants.THREAD_POOL+session.getId();
         String watchServiceKey = Constants.WATCH_SERVICE_KEY + session.getId();
 
@@ -99,8 +97,9 @@ public class WatchFileService {
                 while ((watchKey = watchService.take())!=null){
                     if (!isPause){
                         for (WatchEvent<?> pollEvent : watchKey.pollEvents()) {
+                            log.info("Constants.WATCH_FILE:"+Constants.WATCH_FILE+" pollEvent.context():"+pollEvent.context());
                             if (Constants.WATCH_FILE.equals(pollEvent.context().toString())){
-                                readFile(sessionMap,params,pattern);
+                                readFile(session,sessionMap);
                             }
                         }
                     }
@@ -122,7 +121,7 @@ public class WatchFileService {
 
     }
 
-    public void readFile(Map<Session, SocketMessage> sessionMap,FilterParams params,String pattern) throws IOException {
+    public void readFile(Session session,Map<Session, SocketMessage> sessionMap) throws IOException {
         RandomAccessFile file = null;
         List<String> result = new ArrayList<>();
         try {
@@ -145,7 +144,7 @@ public class WatchFileService {
         }
 
         for (String msg:result){
-            sendMessageToAll(sessionMap,msg,params,pattern);
+            sendMessage(session,msg);
         }
     }
 
@@ -154,7 +153,7 @@ public class WatchFileService {
      * @param session
      * @return
      */
-    private Long firstReadFile(Session session, FilterParams params, String pattern){
+    private Long firstReadFile(Session session){
         RandomAccessFile file = null;
         List<String> result = new ArrayList<>();
         Long point = 0L;
@@ -195,7 +194,7 @@ public class WatchFileService {
             }
 
             for (int i=result.size()-1;i>=0;i--){
-                sendMessage(session,result.get(i),params,pattern);
+                sendMessage(session,result.get(i));
                 //log.info(result.get(i));
             }
             log.info("end randomAccessFile");
@@ -236,12 +235,14 @@ public class WatchFileService {
         }
     }
 
-    public void sendMessageToAll(Map<Session, SocketMessage> sessionMap, String msg,FilterParams params,String pattern){
-        if (filterMessage(msg,params,pattern)){
+    public void sendMessageToAll(Session session,Map<Session, SocketMessage> sessionMap, String msg){
+        String filterParamsKey = Constants.FILTER_PARAMS_KEY + session.getId();
+        SocketMessage o = (SocketMessage)cache.get(filterParamsKey);
+        if (filterMessage(msg,o.getParams(),o.getPattern())){
             SocketMessage socketMessage = parseMessage(msg);
-            sessionMap.forEach((session, message) -> {
+            sessionMap.forEach((sess, message) -> {
                 try {
-                    session.getBasicRemote().sendText(JSONObject.toJSONString(socketMessage));
+                    sess.getBasicRemote().sendText(JSONObject.toJSONString(socketMessage));
                 } catch (IOException e) {
                     e.printStackTrace();
                 }
@@ -249,8 +250,10 @@ public class WatchFileService {
         }
     }
 
-    public void sendMessage(Session session, String msg,FilterParams params,String pattern){
-        if (filterMessage(msg,params,pattern)){
+    public void sendMessage(Session session, String msg){
+        String filterParamsKey = Constants.FILTER_PARAMS_KEY + session.getId();
+        SocketMessage o = (SocketMessage)cache.get(filterParamsKey);
+        if (filterMessage(msg,o.getParams(),o.getPattern())){
             SocketMessage socketMessage = parseMessage(msg);
             try {
                 session.getBasicRemote().sendText(JSONObject.toJSONString(socketMessage));
@@ -273,6 +276,11 @@ public class WatchFileService {
             socketMessage.setMsg("1");
             isPause =true;
         }
+        session.getBasicRemote().sendText(JSONObject.toJSONString(socketMessage));
+    }
+
+    public void heartBeat(Session session) throws IOException {
+        SocketMessage socketMessage = generateMsg("heart",null,TypeEnums.HEART_MSG_OPERATE.getCode());
         session.getBasicRemote().sendText(JSONObject.toJSONString(socketMessage));
     }
 
@@ -377,54 +385,57 @@ public class WatchFileService {
         Matcher matcher = pattern.matcher(msg);
         if (!matcher.find()){
             errSet.add("/\\w+\\?此正则匹配失败");
-        }else {
-            //判断值空
-            String startParams = msg.substring(matcher.end());
-            String paramsStr = startParams.substring(0,startParams.indexOf(' '));
-            String[] kvParams = paramsStr.split("&");
-            //System.out.println(JSONObject.toJSONString(kvParams));
-            for (String param : new ArrayList<>(Arrays.asList(kvParams))) {
-                String[] kv = param.split("=");
-                if (kv.length==2){
-                    kvMap.put(kv[0],kv[1]);
-                }else {
-                    if (StringUtils.isNotEmpty(kv[0])&&(allParamList.contains(kv[0])||kv[0].equals("net_work"))){
-                        kvMap.put(kv[0],"null");
-                        nullSet.add(kv[0]+"字段值为null");
-                    }
+            return generateMsg(msg,StringUtils.join(errSet.toArray(new String[0])," ; "),TypeEnums.WRONG_MEG_OPERATE.getCode());
+        }
+        //判断值空
+        String startParams = msg.substring(matcher.end());
+        String paramsStr = startParams.substring(0,startParams.indexOf(' '));
+        String[] kvParams = paramsStr.split("&");
+        //System.out.println(JSONObject.toJSONString(kvParams));
+        for (String param : new ArrayList<>(Arrays.asList(kvParams))) {
+            String[] kv = param.split("=");
+            if (kv.length==2){
+                kvMap.put(kv[0],kv[1]);
+            }else {
+                if (StringUtils.isNotEmpty(kv[0])&&(allParamList.contains(kv[0])||kv[0].equals("net_work"))){
+                    kvMap.put(kv[0],"null");
+                    nullSet.add(kv[0]+"字段值为null");
                 }
             }
-            //判断缺少公共字段
-            for (String com : comList) {
-                if (kvMap.get(com)==null){
-                    if (com.equals("ntwk")&&kvMap.get("net_work")!=null){
-                        continue;
-                    }
-                    lackSet.add(com);
+        }
+        //判断是否需要校验
+        String logTypeId = kvMap.get("t");
+        if (StringUtils.isEmpty(logTypeId)||StringUtils.isNotEmpty(logTypeId)&&!"20".equals(logTypeId)&&!"21".equals(logTypeId)){
+            return generateMsg(msg,null,TypeEnums.NOT_CHECK_MSG_OPERATE.getCode());
+        }
+        //判断缺少公共字段
+        for (String com : comList) {
+            if (kvMap.get(com)==null){
+                if (com.equals("ntwk")&&kvMap.get("net_work")!=null){
+                    continue;
                 }
+                lackSet.add(com);
             }
         }
 
-        String logTypeId = kvMap.get("t");
-        if (StringUtils.isNotEmpty(logTypeId)){
-            ArrayList<String> tList = null;
-            switch (logTypeId){
-                case "20":
-                    tList = new ArrayList<>(Arrays.asList(Constants.t_20_params.split(",")));
-                    break;
-                case "21":
-                    tList = new ArrayList<>(Arrays.asList(Constants.t_21_params.split(",")));
-                    break;
-                default:
-                    tList = new ArrayList<>();
-                    break;
-            }
-            for (String t : tList) {
-                if (kvMap.get(t)==null){
-                    lackSet.add(t);
-                }
+        ArrayList<String> tList = null;
+        switch (logTypeId){
+            case "20":
+                tList = new ArrayList<>(Arrays.asList(Constants.t_20_params.split(",")));
+                break;
+            case "21":
+                tList = new ArrayList<>(Arrays.asList(Constants.t_21_params.split(",")));
+                break;
+            default:
+                tList = new ArrayList<>();
+                break;
+        }
+        for (String t : tList) {
+            if (kvMap.get(t)==null){
+                lackSet.add(t);
             }
         }
+
 
         if (!CollectionUtils.isEmpty(lackSet)){
             String err = "缺少"+StringUtils.join(lackSet.toArray(new String[0])," , ") +"字段";
@@ -438,7 +449,7 @@ public class WatchFileService {
 
 
         if (CollectionUtils.isEmpty(errSet)){
-            return generateMsg(msg,null, TypeEnums.MESSAGE_OPERATE.getCode());
+            return generateMsg(msg,null, TypeEnums.RIGHT_MSG_OPERATE.getCode());
         }else {
             return generateMsg(msg,StringUtils.join(errSet.toArray(new String[0])," ; "),TypeEnums.WRONG_MEG_OPERATE.getCode());
         }

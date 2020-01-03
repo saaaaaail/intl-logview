@@ -60,6 +60,8 @@ public class WebSocketServer {
         }else if (socketMessage.getMsg().equals("rewatch")){
             //poolMonitorService.readFileScheduledWithFilter(session,sessionMap,socketMessage);
             watchFileService.startProcess(session,sessionMap,socketMessage);
+        }else if (socketMessage.getMsg().equals("heart")){
+            watchFileService.heartBeat(session);
         }
     }
 
@@ -73,6 +75,7 @@ public class WebSocketServer {
         //poolMonitorService.closePool(session);
         try {
             watchFileService.closeWatchService(session);
+            watchFileService.closePool(session);
             session.close();
         } catch (IOException e) {
             e.printStackTrace();
