@@ -1,11 +1,14 @@
 package com.iqiyi.intl.logview.watch;
 
+import com.alibaba.fastjson.JSON;
+import com.alibaba.fastjson.JSONArray;
 import com.alibaba.fastjson.JSONObject;
 import com.iqiyi.intl.logview.cache.Cache;
 import com.iqiyi.intl.logview.constant.Constants;
 import com.iqiyi.intl.logview.enums.TypeEnums;
 import com.iqiyi.intl.logview.websocket.FilterParams;
 import com.iqiyi.intl.logview.websocket.SocketMessage;
+import com.sun.org.apache.bcel.internal.generic.IF_ACMPEQ;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -99,6 +102,7 @@ public class WatchFileService {
                         for (WatchEvent<?> pollEvent : watchKey.pollEvents()) {
                             log.info("Constants.WATCH_FILE:"+Constants.WATCH_FILE+" pollEvent.context():"+pollEvent.context());
                             if (Constants.WATCH_FILE.equals(pollEvent.context().toString())){
+                                log.info("readFile:access.log");
                                 readFile(session,sessionMap);
                             }
                         }
@@ -110,6 +114,7 @@ public class WatchFileService {
             } catch (IOException e) {
                 e.printStackTrace();
             } finally {
+                log.info("线程结束！");
                 try {
                     closeWatchService(session);
                 } catch (IOException e) {
@@ -130,7 +135,7 @@ public class WatchFileService {
             String msgline = null;
             while ((msgline = file.readLine())!=null){
                 String msg = new String(msgline.getBytes(StandardCharsets.ISO_8859_1),StandardCharsets.UTF_8).trim();
-                if (StringUtils.isNotEmpty(msg)){
+                if (StringUtils.isNotEmpty(msg)&&msg.contains(Constants.SRC_TARGET_IP)&&msg.startsWith(Constants.SRC_TARGET_IP)){
                     result.add(msg);
                 }
             }
@@ -139,13 +144,13 @@ public class WatchFileService {
             e.printStackTrace();
         }finally {
             if (file!=null){
+                log.info("一次读取文件流关闭");
                 file.close();
             }
         }
 
-        for (String msg:result){
-            sendMessage(session,msg);
-        }
+        sendMessage(session,result);
+
     }
 
     /**
@@ -169,7 +174,7 @@ public class WatchFileService {
                     String msg = null;
                     if ((msg = file.readLine())!=null){
                         String msgline = new String(msg.getBytes(StandardCharsets.ISO_8859_1), StandardCharsets.UTF_8).trim();
-                        if (StringUtils.isNotEmpty(msgline)) {
+                        if (StringUtils.isNotEmpty(msgline)&&msg.contains(Constants.SRC_TARGET_IP)&&msgline.startsWith(Constants.SRC_TARGET_IP)) {
                             result.add(msgline);
                         }
                     }
@@ -179,7 +184,7 @@ public class WatchFileService {
                     String msg = null;
                     if ((msg = file.readLine())!=null){
                         String msgline = new String(msg.getBytes(StandardCharsets.ISO_8859_1), StandardCharsets.UTF_8).trim();
-                        if (StringUtils.isNotEmpty(msgline)){
+                        if (StringUtils.isNotEmpty(msgline)&&msg.contains(Constants.SRC_TARGET_IP)&&msgline.startsWith(Constants.SRC_TARGET_IP)){
                             result.add(msgline);
                         }
                     }
@@ -193,10 +198,8 @@ public class WatchFileService {
                 }
             }
 
-            for (int i=result.size()-1;i>=0;i--){
-                sendMessage(session,result.get(i));
-                //log.info(result.get(i));
-            }
+            sendMessage(session,result);
+
             log.info("end randomAccessFile");
             return fileLength;
         } catch (IOException e) {
@@ -235,32 +238,71 @@ public class WatchFileService {
         }
     }
 
-    public void sendMessageToAll(Session session,Map<Session, SocketMessage> sessionMap, String msg){
+//    public void sendMessageToAll(Session session,Map<Session, SocketMessage> sessionMap, String msg){
+//        String filterParamsKey = Constants.FILTER_PARAMS_KEY + session.getId();
+//        SocketMessage o = (SocketMessage)cache.get(filterParamsKey);
+//        if (filterMessage(msg,o.getParams(),o.getPattern())){
+//            List<SocketMessage> socketMessages = parseMessage(msg);
+//            sessionMap.forEach((sess, message) -> {
+//                try {
+//                    for (SocketMessage socketMessage : socketMessages) {
+//                        sess.getBasicRemote().sendText(JSONObject.toJSONString(socketMessage));
+//                    }
+//                } catch (IOException e) {
+//                    e.printStackTrace();
+//                }
+//            });
+//        }
+//    }
+
+    public void sendMessage(Session session, List<String> msgs){
         String filterParamsKey = Constants.FILTER_PARAMS_KEY + session.getId();
         SocketMessage o = (SocketMessage)cache.get(filterParamsKey);
-        if (filterMessage(msg,o.getParams(),o.getPattern())){
-            SocketMessage socketMessage = parseMessage(msg);
-            sessionMap.forEach((sess, message) -> {
+        List<String> splitMsg = splitMessage(msgs);
+        log.info(JSONObject.toJSONString(splitMsg));
+        for (int i=splitMsg.size()-1;i>=0;i--) {
+            String msg = splitMsg.get(i);
+            if (filterMessage(msg,o.getParams(),o.getPattern())){
+                List<SocketMessage> socketMessages = parseMessage(msg);
                 try {
-                    sess.getBasicRemote().sendText(JSONObject.toJSONString(socketMessage));
+                    for (SocketMessage socketMessage : socketMessages) {
+                        session.getBasicRemote().sendText(JSONObject.toJSONString(socketMessage));
+                    }
                 } catch (IOException e) {
                     e.printStackTrace();
                 }
-            });
-        }
-    }
-
-    public void sendMessage(Session session, String msg){
-        String filterParamsKey = Constants.FILTER_PARAMS_KEY + session.getId();
-        SocketMessage o = (SocketMessage)cache.get(filterParamsKey);
-        if (filterMessage(msg,o.getParams(),o.getPattern())){
-            SocketMessage socketMessage = parseMessage(msg);
-            try {
-                session.getBasicRemote().sendText(JSONObject.toJSONString(socketMessage));
-            } catch (IOException e) {
-                e.printStackTrace();
             }
         }
+
+    }
+
+    private List<String> splitMessage(List<String> msgs){
+        List<String> splitMsg = new ArrayList<>();
+        for (String msg : msgs) {
+            Pattern postPattern = Pattern.compile("\"(POST)[ ]/");
+            Matcher postMatcher = postPattern.matcher(msg);
+            if (postMatcher.find()){
+                Pattern bodyPattern = Pattern.compile("body:\"msg=\\[\\{.*}]\"");
+                Matcher bodyMatcher = bodyPattern.matcher(msg);
+                if (bodyMatcher.find()){
+                    String preMsg = msg.substring(0, bodyMatcher.start()+10);
+                    String msgBody = msg.substring(bodyMatcher.start()+10, bodyMatcher.end()-1);
+                    String postMsg = msg.substring(bodyMatcher.end()-1);
+                    msgBody = msgBody.replace("\\t","").replace("\\n","").replace("\\","");
+                    log.info(msgBody);
+                    if (isJsonArray(msgBody)){
+                        JSONArray jsonArray = JSONObject.parseArray(msgBody);
+                        for (Object o:jsonArray){
+                            String tmpMsg = preMsg +"["+JSONObject.toJSONString(o)+"]"+postMsg;
+                            splitMsg.add(tmpMsg);
+                        }
+                        continue;
+                    }
+                }
+            }
+            splitMsg.add(msg);
+        }
+        return splitMsg;
     }
 
     public void pauseMonitor(Session session) throws IOException {
@@ -312,30 +354,45 @@ public class WatchFileService {
         }
     }
 
-    private boolean filterMessage(String msg,FilterParams params,String pattern){
-        Map<String,String> kvMap = new HashMap<>();
-        if (StringUtils.isNotEmpty(pattern)){
-            Pattern patternUri = Pattern.compile(pattern);
+
+
+    private boolean filterMessage(String msg,FilterParams params,String patternStr){
+        if (StringUtils.isNotEmpty(patternStr)){
+            Pattern patternUri = Pattern.compile(patternStr);
             Matcher matcher = patternUri.matcher(msg);
             if (matcher.find()) {
                 return true;
             }
             return false;
         }
-        Pattern patternUri = Pattern.compile("/\\w+\\?");
-        Matcher matcher = patternUri.matcher(msg);
-        if (!matcher.find()){
-            return false;
-        }
-        String startParams = msg.substring(matcher.end());
-        String paramsStr = startParams.substring(0,startParams.indexOf(' '));
-        String[] kvParams = paramsStr.split("&");
-        for (String param : new ArrayList<>(Arrays.asList(kvParams))) {
-            String[] kv = param.split("=");
-            if (kv.length==2){
-                kvMap.put(kv[0],kv[1]);
+
+        msg = msg.trim();
+        //公共字段
+        String[] comParam = Constants.commonParams.split(",");
+        List<String> comList = new ArrayList<>(Arrays.asList(comParam));
+
+        List<String> allParamList = new ArrayList<>();
+        allParamList.addAll(comList);
+        allParamList.addAll(Arrays.asList(Constants.t_20_params.split(",")));
+        allParamList.addAll(Arrays.asList(Constants.t_21_params.split(",")));
+        //所有字段
+        allParamList = allParamList.stream().distinct().collect(Collectors.toList());
+        Map<String,String> kvMap = new HashMap<>();
+        Pattern getPattern = Pattern.compile("\"(GET)[ ]/");
+        Matcher getMatcher = getPattern.matcher(msg);
+        Pattern postPattern = Pattern.compile("\"(POST)[ ]/");
+        Matcher postMatcher = postPattern.matcher(msg);
+        if (getMatcher.find()){
+            Pattern pattern = Pattern.compile("/\\w+\\?");
+            Matcher matcher = pattern.matcher(msg);
+            if (!matcher.find()){
+                return false;
             }
+            kvMap = getCheck(msg,matcher.end(),allParamList,null);
+        }else if (postMatcher.find()){
+            kvMap = postCheck(msg,allParamList,null);
         }
+
         if (StringUtils.isNotEmpty(params.getUri())){
             if (!msg.contains(params.getUri())){
                 return false;
@@ -365,48 +422,48 @@ public class WatchFileService {
     }
 
 
-    private SocketMessage parseMessage(String msg){
+
+    private List<SocketMessage> parseMessage(String msg){
+        List<SocketMessage> socketMsgs = new ArrayList<>();
         Set<String> errSet = new LinkedHashSet<>();
         Set<String> lackSet = new LinkedHashSet<>();
         Set<String> nullSet = new LinkedHashSet<>();
         msg = msg.trim();
         //公共字段
         String[] comParam = Constants.commonParams.split(",");
-        ArrayList<String> comList = new ArrayList<>(Arrays.asList(comParam));
+        List<String> comList = new ArrayList<>(Arrays.asList(comParam));
 
         List<String> allParamList = new ArrayList<>();
+        allParamList.addAll(comList);
         allParamList.addAll(Arrays.asList(Constants.t_20_params.split(",")));
         allParamList.addAll(Arrays.asList(Constants.t_21_params.split(",")));
         //所有字段
         allParamList = allParamList.stream().distinct().collect(Collectors.toList());
-        //
         Map<String,String> kvMap = new HashMap<>();
-        Pattern pattern = Pattern.compile("/\\w+\\?");
-        Matcher matcher = pattern.matcher(msg);
-        if (!matcher.find()){
-            errSet.add("/\\w+\\?此正则匹配失败");
-            return generateMsg(msg,StringUtils.join(errSet.toArray(new String[0])," ; "),TypeEnums.WRONG_MEG_OPERATE.getCode());
-        }
-        //判断值空
-        String startParams = msg.substring(matcher.end());
-        String paramsStr = startParams.substring(0,startParams.indexOf(' '));
-        String[] kvParams = paramsStr.split("&");
-        //System.out.println(JSONObject.toJSONString(kvParams));
-        for (String param : new ArrayList<>(Arrays.asList(kvParams))) {
-            String[] kv = param.split("=");
-            if (kv.length==2){
-                kvMap.put(kv[0],kv[1]);
-            }else {
-                if (StringUtils.isNotEmpty(kv[0])&&(allParamList.contains(kv[0])||kv[0].equals("net_work"))){
-                    kvMap.put(kv[0],"null");
-                    nullSet.add(kv[0]+"字段值为null");
-                }
+        Pattern getPattern = Pattern.compile("\"(GET)[ ]/");
+        Matcher getMatcher = getPattern.matcher(msg);
+        Pattern postPattern = Pattern.compile("\"(POST)[ ]/");
+        Matcher postMatcher = postPattern.matcher(msg);
+        if (getMatcher.find()){
+            Pattern pattern = Pattern.compile("/\\w+\\?");
+            Matcher matcher = pattern.matcher(msg);
+            if (!matcher.find()){
+                errSet.add("/\\w+\\?此正则匹配失败");
+                SocketMessage socketMessage = generateMsg(msg, StringUtils.join(errSet.toArray(new String[0]), " ; "), TypeEnums.WRONG_MEG_OPERATE.getCode());
+                socketMsgs.add(socketMessage);
+                return socketMsgs;
             }
+            kvMap = getCheck(msg,matcher.end(),allParamList,nullSet);
+        }else if (postMatcher.find()){
+            kvMap = postCheck(msg,allParamList,nullSet);
         }
+
         //判断是否需要校验
         String logTypeId = kvMap.get("t");
         if (StringUtils.isEmpty(logTypeId)||StringUtils.isNotEmpty(logTypeId)&&!"20".equals(logTypeId)&&!"21".equals(logTypeId)){
-            return generateMsg(msg,null,TypeEnums.NOT_CHECK_MSG_OPERATE.getCode());
+            SocketMessage socketMessage = generateMsg(msg, null, TypeEnums.NOT_CHECK_MSG_OPERATE.getCode());
+            socketMsgs.add(socketMessage);
+            return socketMsgs;
         }
         //判断缺少公共字段
         for (String com : comList) {
@@ -447,13 +504,93 @@ public class WatchFileService {
             errSet.add(err);
         }
 
-
         if (CollectionUtils.isEmpty(errSet)){
-            return generateMsg(msg,null, TypeEnums.RIGHT_MSG_OPERATE.getCode());
+            socketMsgs.add(generateMsg(msg,null, TypeEnums.RIGHT_MSG_OPERATE.getCode()));
+            return socketMsgs;
         }else {
-            return generateMsg(msg,StringUtils.join(errSet.toArray(new String[0])," ; "),TypeEnums.WRONG_MEG_OPERATE.getCode());
+            socketMsgs.add(generateMsg(msg,StringUtils.join(errSet.toArray(new String[0])," ; "),TypeEnums.WRONG_MEG_OPERATE.getCode()));
+            return socketMsgs;
+        }
+    }
+
+
+    private Map<String,String> postCheck(String msg,List<String> allParamList,Set<String> nullSet){
+        Map<String,String> kvMap = new HashMap<>();
+
+        Pattern bodyPattern = Pattern.compile("body:\"msg=\\[\\{.*}]\"");
+        Matcher bodyMatcher = bodyPattern.matcher(msg);
+        if (bodyMatcher.find()) {
+            String preMsg = msg.substring(0, bodyMatcher.start()+10);
+            String msgBody = msg.substring(bodyMatcher.start()+10, bodyMatcher.end()-1);
+            String postMsg = msg.substring(bodyMatcher.end()-1);
+            //清空body里面的换行符制表符右斜杠
+            msgBody = msgBody.replace("\\t","").replace("\\n","").replace("\\","");
+            log.info(msgBody);
+            if (isJsonArray(msgBody)){
+                JSONArray jsonArray = JSONObject.parseArray(msgBody);
+                Set<Map.Entry<String, Object>> entries = ((JSONObject)jsonArray.get(0)).entrySet();
+                for (Map.Entry<String, Object> entry : entries) {
+                    kvMap.put(entry.getKey(),entry.getValue().toString());
+                    if (StringUtils.isEmpty(entry.getValue().toString())&&allParamList.contains(entry.getKey())&&nullSet!=null){
+                        nullSet.add(entry.getKey());
+                    }
+                }
+            }
         }
 
+        //判断param参数
+        Pattern pattern = Pattern.compile("/\\w+\\?");
+        Matcher matcher = pattern.matcher(msg);
+        if (matcher.find()){
+            String startParams = msg.substring(matcher.end());
+            String paramsStr = startParams.substring(0,startParams.indexOf(' '));
+            String[] kvParams = paramsStr.split("&");
+            for (String param : new ArrayList<>(Arrays.asList(kvParams))) {
+                String[] kv = param.split("=");
+                if (kv.length==2){
+                    if (StringUtils.isEmpty(kv[1])&&nullSet!=null){
+                        nullSet.add(kv[0]);
+                    }
+                    kvMap.put(kv[0],kv[1]);
+                }else {
+                    if (StringUtils.isNotEmpty(kv[0])&&(allParamList.contains(kv[0])||kv[0].equals("net_work"))){
+                        kvMap.put(kv[0],"null");
+                        if (nullSet!=null){
+                            nullSet.add(kv[0]);
+                        }
+                    }
+                }
+            }
+        }
+        return kvMap;
+    }
+
+
+    private Map<String,String> getCheck(String msg,Integer matchEnd,List<String> allParamList,Set<String> nullSet){
+        Map<String,String> kvMap = new HashMap<>();
+
+        //判断值空
+        String startParams = msg.substring(matchEnd);
+        String paramsStr = startParams.substring(0,startParams.indexOf(' '));
+        String[] kvParams = paramsStr.split("&");
+        //System.out.println(JSONObject.toJSONString(kvParams));
+        for (String param : new ArrayList<>(Arrays.asList(kvParams))) {
+            String[] kv = param.split("=");
+            if (kv.length==2){
+                if (StringUtils.isEmpty(kv[1])){
+                    nullSet.add(kv[0]);
+                }
+                kvMap.put(kv[0],kv[1]);
+            }else {
+                if (StringUtils.isNotEmpty(kv[0])&&(allParamList.contains(kv[0])||kv[0].equals("net_work"))){
+                    kvMap.put(kv[0],"null");
+                    if (!CollectionUtils.isEmpty(nullSet)){
+                        nullSet.add(kv[0]);
+                    }
+                }
+            }
+        }
+        return kvMap;
     }
 
     private SocketMessage generateMsg(String msg,String error,Integer type){
@@ -463,4 +600,25 @@ public class WatchFileService {
         socketMessage.setType(type);
         return socketMessage;
     }
+
+    private boolean isJsonObject(String json){
+        try{
+            JSONObject.parseObject(json);
+        }catch (Exception e){
+            return false;
+        }
+        return true;
+    }
+
+    private boolean isJsonArray(String json){
+        try{
+            JSONObject.parseArray(json);
+        }catch (Exception e){
+            return false;
+        }
+        return true;
+    }
+
+
+
 }

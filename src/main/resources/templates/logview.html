@@ -149,7 +149,7 @@
                     $('.log-watch-btn').hide();
 
                     $messageContainer.prepend('<div class="mdui-text-color-black-* keepline log-content"  style="font-size:x-large">'+ data.msg +'</div>');
-                    if ($messageContainer.children('div').length>320){
+                    if ($messageContainer.children('div').length>300){
                         console.log("$messageContainer.children('div').length{}:",$messageContainer.children('div'));
                         $messageContainer.children(':last-child').remove();
                     }
@@ -159,7 +159,7 @@
                     $('.log-watch-btn').hide();
                     var error = data.error;
                     $messageContainer.prepend('<div class="mdui-text-color-red-900 keepline wrong-border mdui-hoverable log-content" mdui-tooltip="{content:\''+error+'\'}" style="font-size:x-large">'+ data.msg +'</div>');
-                    if ($messageContainer.children('div').length>320){
+                    if ($messageContainer.children('div').length>300){
                         console.log("$messageContainer.children('div').length{}:",$messageContainer.children('div'));
                         $messageContainer.children(':last-child').remove();
                     }
@@ -173,7 +173,7 @@
                 case 5:
                     $('.log-watch-btn').hide();
                     $messageContainer.prepend('<div class="mdui-text-color-green-900 keepline mdui-hoverable log-content" style="font-size:x-large">'+ data.msg +'</div>');
-                    if ($messageContainer.children('div').length>320){
+                    if ($messageContainer.children('div').length>300){
                         console.log("$messageContainer.children('div').length{}:",$messageContainer.children('div'));
                         $messageContainer.children(':last-child').remove();
                     }
