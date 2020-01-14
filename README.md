@@ -16,37 +16,37 @@ SocketMessage
 
 
 ### 服务端发给客户端的消息
-- Type=0 表示 此消息为暂停操作
-	Msg=“0” 为 服务端为非暂停的状态
-	Msg=“1” 为 服务端为暂停的状态
+- type=0 表示 此消息为暂停操作
+	msg=“0” 为 服务端为非暂停的状态
+	msg=“1” 为 服务端为暂停的状态
 	其他值均为null
 
-- Type =1 表示 此消息为未检查的日志消息
-	Msg 表示 日志内容
+- type =1 表示 此消息为未检查的日志消息
+	msg 表示 日志内容
 	其他值均为null
 
-- Type=2 表示 此消息为错误的日志消息
-	Msg 表示 日志内容
-	Error 表示日志错误信息
+- type=2 表示 此消息为错误的日志消息
+	msg 表示 日志内容
+	error 表示日志错误信息
 其他值均为null
 
-- Type=3 表示 此消息为正确的日志消息
-	Msg 表示 日志内容
+- type=3 表示 此消息为正确的日志消息
+	msg 表示 日志内容
 其他值均为null
 
-- Type=4 表示 此消息为筛选按钮可用操作
+- type=4 表示 此消息为筛选按钮可用操作
 其他值均为null
 
-- Type=5表示 此消息为清屏操作
+- type=5表示 此消息为清屏操作
 其他值均为null
 
-- Type=6 表示 此消息为心跳操作
-	Msg =”heart”
+- type=6 表示 此消息为心跳操作
+	msg =”heart”
 其他值均为null
 
 
 ### 客户端发给服务端的消息
-- Msg = “pause”  暂停操作
-- Msg = ”watch”  开始监听操作
-- Msg = “rewatch”  过滤操作
-- Msg=”heart” 心跳操作
+- msg = “pause”  暂停操作
+- msg = ”watch”  开始监听操作
+- msg = “rewatch”  过滤操作
+- msg=”heart” 心跳操作
