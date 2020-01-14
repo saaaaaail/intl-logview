@@ -164,13 +164,8 @@
                         $messageContainer.children(':last-child').remove();
                     }
                     break;
-                //清屏
-                case 3: clearMsg();break;
-                //筛选按钮可用
-                case 4: enableFilterBtn();
-                    break;
                 //正确的消息
-                case 5:
+                case 3:
                     $('.log-watch-btn').hide();
                     $messageContainer.prepend('<div class="mdui-text-color-green-900 keepline mdui-hoverable log-content" style="font-size:x-large">'+ data.msg +'</div>');
                     if ($messageContainer.children('div').length>300){
@@ -178,6 +173,11 @@
                         $messageContainer.children(':last-child').remove();
                     }
                     break;
+                //筛选按钮可用
+                case 4: enableFilterBtn();
+                    break;
+                //清屏
+                case 5:clearMsg();break;
                 case 6:
                     webSock.lastHeartBeat = new Date().getTime();
                     break;
