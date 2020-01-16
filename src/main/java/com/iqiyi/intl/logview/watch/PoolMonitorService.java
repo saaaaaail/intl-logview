@@ -79,11 +79,10 @@ public class PoolMonitorService {
 
     private void readFileScheduled(Session host, Map<Session, SocketMessage> sessionMap,SocketMessage socketMessage){
         String poolKey = Constants.SCHEDULED_POOL + host.getId();
-        FilterParams params = socketMessage.getParams();
-        String pattern = socketMessage.getPattern();
+
 
         //读历史文件
-        pointer = firstReadFile(host,params,pattern);
+        pointer = firstReadFile(host);
         //筛选按钮可用
         enableFilterBtnMsg(host);
 
@@ -114,7 +113,7 @@ public class PoolMonitorService {
                     }
                 }
                 for (String msg:result){
-                    sendMessageToAll(sessionMap, msg,params,pattern);
+                    sendMessageToAll(sessionMap, msg);
                 }
             }
         }, 0, 1, TimeUnit.MILLISECONDS);
@@ -147,8 +146,8 @@ public class PoolMonitorService {
         }
     }
 
-    public void sendMessageToAll(Map<Session, SocketMessage> sessionMap, String msg,FilterParams params,String pattern){
-        if (filterMessage(msg,params,pattern)){
+    public void sendMessageToAll(Map<Session, SocketMessage> sessionMap, String msg){
+
             SocketMessage socketMessage = parseMessage(msg);
             sessionMap.forEach((session, message) -> {
                 try {
@@ -157,18 +156,18 @@ public class PoolMonitorService {
                     e.printStackTrace();
                 }
             });
-        }
+
     }
 
-    public void sendMessage(Session session, String msg,FilterParams params,String pattern){
-        if (filterMessage(msg,params,pattern)){
+    public void sendMessage(Session session, String msg){
+
             SocketMessage socketMessage = parseMessage(msg);
             try {
                 session.getBasicRemote().sendText(JSONObject.toJSONString(socketMessage));
             } catch (IOException e) {
                 e.printStackTrace();
             }
-        }
+
     }
 
     public void clearMsg(Session session){
@@ -194,7 +193,7 @@ public class PoolMonitorService {
      * @param session
      * @return
      */
-    private Long firstReadFile(Session session,FilterParams params,String pattern){
+    private Long firstReadFile(Session session){
         RandomAccessFile file = null;
         List<String> result = new ArrayList<>();
         Long point = 0L;
@@ -237,7 +236,7 @@ public class PoolMonitorService {
             }
 
             for (int i=result.size()-1;i>=0;i--){
-                sendMessage(session,result.get(i),params,pattern);
+                sendMessage(session,result.get(i));
                 //log.info(result.get(i));
             }
             return fileLength;

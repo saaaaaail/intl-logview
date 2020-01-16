@@ -1,5 +1,6 @@
 package com.iqiyi.intl.logview.websocket;
 
+import com.alibaba.fastjson.JSONObject;
 import lombok.Data;
 
 /**
@@ -14,11 +15,20 @@ public class SocketMessage {
 
     private String msg;
 
+    private String ip;
+
+    private Long time;
+
+    private String url;
+
+    private String method;
+
+    private JSONObject params;
+
+    private String groupId;
+
     private Integer type;
 
     private String error;
 
-    private String pattern;
-
-    private FilterParams params;
 }

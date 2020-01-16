@@ -22,6 +22,10 @@ import java.io.IOException;
 import java.io.RandomAccessFile;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.*;
+import java.time.LocalDate;
+import java.time.LocalDateTime;
+import java.time.ZoneOffset;
+import java.time.format.DateTimeFormatter;
 import java.util.*;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -53,7 +57,6 @@ public class WatchFileService {
     public void startProcess(Session host, Map<Session, SocketMessage> sessionMap,SocketMessage socketMessage) throws IOException {
         log.info("校验是否第一次读取文件");
         String watchServiceKey = Constants.WATCH_SERVICE_KEY + host.getId();
-        String filterParamsKey = Constants.FILTER_PARAMS_KEY + host.getId();
         String poolKey = Constants.THREAD_POOL+host.getId();
         synchronized (this){
             Object o1 = cache.get(watchServiceKey);
@@ -67,7 +70,6 @@ public class WatchFileService {
             ExecutorService executorService = Executors.newFixedThreadPool(1);
             cache.add(poolKey,executorService);
             cache.add(watchServiceKey,watchService);
-            cache.add(filterParamsKey,socketMessage);
         }
 
         //清屏
@@ -213,7 +215,6 @@ public class WatchFileService {
                 }
             }
         }
-
         return null;
     }
 
@@ -256,29 +257,26 @@ public class WatchFileService {
 //    }
 
     public void sendMessage(Session session, List<String> msgs){
-        String filterParamsKey = Constants.FILTER_PARAMS_KEY + session.getId();
-        SocketMessage o = (SocketMessage)cache.get(filterParamsKey);
-        List<String> splitMsg = splitMessage(msgs);
-        log.info(JSONObject.toJSONString(splitMsg));
-        for (int i=splitMsg.size()-1;i>=0;i--) {
-            String msg = splitMsg.get(i);
-            if (filterMessage(msg,o.getParams(),o.getPattern())){
-                List<SocketMessage> socketMessages = parseMessage(msg);
-                try {
-                    for (SocketMessage socketMessage : socketMessages) {
-                        session.getBasicRemote().sendText(JSONObject.toJSONString(socketMessage));
-                    }
-                } catch (IOException e) {
-                    e.printStackTrace();
-                }
+//        String filterParamsKey = Constants.FILTER_PARAMS_KEY + session.getId();
+//        SocketMessage o = (SocketMessage)cache.get(filterParamsKey);
+        List<SocketMessage> splitSckMsg = splitMessage(msgs);
+        log.info(JSONObject.toJSONString(splitSckMsg));
+        for (int i=splitSckMsg.size()-1;i>=0;i--) {
+            SocketMessage sckMsg = splitSckMsg.get(i);
+            SocketMessage socketMessage = parseMessage(sckMsg);
+            try {
+                session.getBasicRemote().sendText(JSONObject.toJSONString(socketMessage));
+            } catch (IOException e) {
+                e.printStackTrace();
             }
-        }
 
+        }
     }
 
-    private List<String> splitMessage(List<String> msgs){
-        List<String> splitMsg = new ArrayList<>();
+    private List<SocketMessage> splitMessage(List<String> msgs){
+        List<SocketMessage> splitSckMsg = new ArrayList<>();
         for (String msg : msgs) {
+            msg = msg.trim();
             Pattern postPattern = Pattern.compile("\"(POST)[ ]/");
             Matcher postMatcher = postPattern.matcher(msg);
             if (postMatcher.find()){
@@ -292,17 +290,21 @@ public class WatchFileService {
                     log.info(msgBody);
                     if (isJsonArray(msgBody)){
                         JSONArray jsonArray = JSONObject.parseArray(msgBody);
+                        String groupId = null;
+                        if (jsonArray.size()!=1){
+                            groupId = UUID.randomUUID().toString().replace("-","");
+                        }
                         for (Object o:jsonArray){
                             String tmpMsg = preMsg +"["+JSONObject.toJSONString(o)+"]"+postMsg;
-                            splitMsg.add(tmpMsg);
+                            splitSckMsg.add(generateMsg(tmpMsg,null,null,groupId));
                         }
                         continue;
                     }
                 }
             }
-            splitMsg.add(msg);
+            splitSckMsg.add(generateMsg(msg,null,null,null));
         }
-        return splitMsg;
+        return splitSckMsg;
     }
 
     public void pauseMonitor(Session session) throws IOException {
@@ -322,12 +324,12 @@ public class WatchFileService {
     }
 
     public void heartBeat(Session session) throws IOException {
-        SocketMessage socketMessage = generateMsg("heart",null,TypeEnums.HEART_MSG_OPERATE.getCode());
+        SocketMessage socketMessage = generateMsg("heart",null,TypeEnums.HEART_MSG_OPERATE.getCode(),null);
         session.getBasicRemote().sendText(JSONObject.toJSONString(socketMessage));
     }
 
     public void clearMsg(Session session){
-        SocketMessage socketMessage = generateMsg(null,null,TypeEnums.CLEAR_MSG_OPERATE.getCode());
+        SocketMessage socketMessage = generateMsg(null,null,TypeEnums.CLEAR_MSG_OPERATE.getCode(),null);
         try {
             session.getBasicRemote().sendText(JSONObject.toJSONString(socketMessage));
         } catch (IOException e) {
@@ -337,7 +339,7 @@ public class WatchFileService {
 
     private void recoverPause(Session session){
         isPause=false;
-        SocketMessage socketMessage = generateMsg("0",null,TypeEnums.PAUSE_OPERATE.getCode());
+        SocketMessage socketMessage = generateMsg("0",null,TypeEnums.PAUSE_OPERATE.getCode(),null);
         try {
             session.getBasicRemote().sendText(JSONObject.toJSONString(socketMessage));
         } catch (IOException e) {
@@ -346,7 +348,7 @@ public class WatchFileService {
     }
 
     public void enableFilterBtnMsg(Session session){
-        SocketMessage socketMessage = generateMsg(null,null,TypeEnums.ENABLE_FILTER_BTN_OPERATE.getCode());
+        SocketMessage socketMessage = generateMsg(null,null,TypeEnums.ENABLE_FILTER_BTN_OPERATE.getCode(),null);
         try {
             session.getBasicRemote().sendText(JSONObject.toJSONString(socketMessage));
         } catch (IOException e) {
@@ -423,12 +425,11 @@ public class WatchFileService {
 
 
 
-    private List<SocketMessage> parseMessage(String msg){
-        List<SocketMessage> socketMsgs = new ArrayList<>();
+    private SocketMessage parseMessage(SocketMessage sckmsg){
+        String msg = sckmsg.getMsg();
         Set<String> errSet = new LinkedHashSet<>();
         Set<String> lackSet = new LinkedHashSet<>();
         Set<String> nullSet = new LinkedHashSet<>();
-        msg = msg.trim();
         //公共字段
         String[] comParam = Constants.commonParams.split(",");
         List<String> comList = new ArrayList<>(Arrays.asList(comParam));
@@ -449,21 +450,52 @@ public class WatchFileService {
             Matcher matcher = pattern.matcher(msg);
             if (!matcher.find()){
                 errSet.add("/\\w+\\?此正则匹配失败");
-                SocketMessage socketMessage = generateMsg(msg, StringUtils.join(errSet.toArray(new String[0]), " ; "), TypeEnums.WRONG_MEG_OPERATE.getCode());
-                socketMsgs.add(socketMessage);
-                return socketMsgs;
+                sckmsg.setType(TypeEnums.WRONG_MEG_OPERATE.getCode());
+                sckmsg.setError(StringUtils.join(errSet.toArray(new String[0]), " ; "));
+                return sckmsg;
+            }else{
+                String uri = msg.substring(matcher.start(),matcher.end()-1);
+                sckmsg.setUrl(uri);
             }
+            sckmsg.setMethod("GET");
             kvMap = getCheck(msg,matcher.end(),allParamList,nullSet);
         }else if (postMatcher.find()){
+            sckmsg.setMethod("POST");
+            Pattern urlPattern1 = Pattern.compile("POST /\\w+\\?");
+            Matcher matcher = urlPattern1.matcher(msg);
+            if (matcher.find()){
+                String uri = msg.substring(matcher.start()+5,matcher.end()-1);
+                sckmsg.setUrl(uri);
+            }else {
+                Pattern urlPattern2 = Pattern.compile("POST /\\w+ ");
+                Matcher matcher1 = urlPattern2.matcher(msg);
+                if (matcher1.find()){
+                    String uri = msg.substring(matcher1.start()+5,matcher1.end());
+                    sckmsg.setUrl(uri);
+                }
+            }
             kvMap = postCheck(msg,allParamList,nullSet);
         }
 
+        //校验前构建消息体
+        sckmsg.setIp(msg.substring(0,msg.indexOf(" ")));
+        Pattern timePattern = Pattern.compile("\\[\\d{4}-\\d{2}-\\d{2} \\d{2}:\\d{2}:\\d{2}]");
+        Matcher timeMatcher = timePattern.matcher(msg);
+        if (timeMatcher.find()){
+            String time = msg.substring(timeMatcher.start()+1,timeMatcher.end()-1);
+            Long timestamp = parseTimestamp(time);
+            sckmsg.setTime(timestamp);
+        }
+        JSONObject params = new JSONObject();
+        for (Map.Entry<String, String> entry : kvMap.entrySet()) {
+            params.put(entry.getKey(),entry.getValue());
+        }
+        sckmsg.setParams(params);
         //判断是否需要校验
         String logTypeId = kvMap.get("t");
         if (StringUtils.isEmpty(logTypeId)||StringUtils.isNotEmpty(logTypeId)&&!"20".equals(logTypeId)&&!"21".equals(logTypeId)){
-            SocketMessage socketMessage = generateMsg(msg, null, TypeEnums.NOT_CHECK_MSG_OPERATE.getCode());
-            socketMsgs.add(socketMessage);
-            return socketMsgs;
+            sckmsg.setType(TypeEnums.NOT_CHECK_MSG_OPERATE.getCode());
+            return sckmsg;
         }
         //判断缺少公共字段
         for (String com : comList) {
@@ -505,11 +537,12 @@ public class WatchFileService {
         }
 
         if (CollectionUtils.isEmpty(errSet)){
-            socketMsgs.add(generateMsg(msg,null, TypeEnums.RIGHT_MSG_OPERATE.getCode()));
-            return socketMsgs;
+            sckmsg.setType(TypeEnums.RIGHT_MSG_OPERATE.getCode());
+            return sckmsg;
         }else {
-            socketMsgs.add(generateMsg(msg,StringUtils.join(errSet.toArray(new String[0])," ; "),TypeEnums.WRONG_MEG_OPERATE.getCode()));
-            return socketMsgs;
+            sckmsg.setType(TypeEnums.WRONG_MEG_OPERATE.getCode());
+            sckmsg.setError(StringUtils.join(errSet.toArray(new String[0])," ; "));
+            return sckmsg;
         }
     }
 
@@ -554,7 +587,7 @@ public class WatchFileService {
                     kvMap.put(kv[0],kv[1]);
                 }else {
                     if (StringUtils.isNotEmpty(kv[0])&&(allParamList.contains(kv[0])||kv[0].equals("net_work"))){
-                        kvMap.put(kv[0],"null");
+                        kvMap.put(kv[0],"");
                         if (nullSet!=null){
                             nullSet.add(kv[0]);
                         }
@@ -583,7 +616,7 @@ public class WatchFileService {
                 kvMap.put(kv[0],kv[1]);
             }else {
                 if (StringUtils.isNotEmpty(kv[0])&&(allParamList.contains(kv[0])||kv[0].equals("net_work"))){
-                    kvMap.put(kv[0],"null");
+                    kvMap.put(kv[0],"");
                     if (!CollectionUtils.isEmpty(nullSet)){
                         nullSet.add(kv[0]);
                     }
@@ -593,11 +626,12 @@ public class WatchFileService {
         return kvMap;
     }
 
-    private SocketMessage generateMsg(String msg,String error,Integer type){
+    private SocketMessage generateMsg(String msg,String error,Integer type,String groupId){
         SocketMessage socketMessage =new SocketMessage();
         socketMessage.setMsg(msg);
         socketMessage.setError(error);
         socketMessage.setType(type);
+        socketMessage.setGroupId(groupId);
         return socketMessage;
     }
 
@@ -619,6 +653,10 @@ public class WatchFileService {
         return true;
     }
 
-
+    private Long parseTimestamp(String time){
+        LocalDateTime localDateTime = LocalDateTime.parse(time, DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss"));
+        long timeStamp = localDateTime.toInstant(ZoneOffset.ofHours(8)).toEpochMilli();
+        return timeStamp;
+    }
 
 }
