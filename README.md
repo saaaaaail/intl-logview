@@ -1,6 +1,8 @@
 # 日志查看器
 ## intl-logview
 
+ws://10.41.149.107:9088/api-logview/logview
+
 ### 消息交互数据结构
 SocketMessage 
 ```
