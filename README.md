@@ -6,10 +6,14 @@ SocketMessage
 ```
 {
 	String msg : 消息内容
-	Integer type : 消息类型
+	String ip : ip地址
+    Long time : 时间戳
+    String url : uri
+    String method : 请求方法
+    JSONObject params : 参数字段，包括body参数
+    String groupId : 组id
+	type : 消息类型
 	String error : 消息包含的错误
-	String pattern : 消息携带的正则过滤条件
-	FilterParams : params 消息携带的过滤条件
 }
 ```
 
@@ -46,7 +50,7 @@ SocketMessage
 
 
 ### 客户端发给服务端的消息
-- msg = “pause”  暂停操作
-- msg = ”watch”  开始监听操作
-- msg = “rewatch”  过滤操作
-- msg=”heart” 心跳操作
+- msg = “pause”  暂停操作 -> 返回type=0的消息给客户端
+- msg = ”watch”  开始监听操作 -> 返回type=1、2、3的消息给客户端
+- msg = “rewatch”  过滤操作 -> 返回type=1、2、3的消息给客户端
+- msg=”heart” 心跳操作 -> 返回type=6的消息给客户端
