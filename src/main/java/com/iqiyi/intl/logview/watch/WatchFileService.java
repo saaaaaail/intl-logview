@@ -446,7 +446,7 @@ public class WatchFileService {
         Pattern postPattern = Pattern.compile("\"(POST)[ ]/");
         Matcher postMatcher = postPattern.matcher(msg);
         if (getMatcher.find()){
-            Pattern pattern = Pattern.compile("/\\w+\\?");
+            Pattern pattern = Pattern.compile("GET (/\\w+)+\\?");
             Matcher matcher = pattern.matcher(msg);
             if (!matcher.find()){
                 errSet.add("/\\w+\\?此正则匹配失败");
@@ -454,23 +454,23 @@ public class WatchFileService {
                 sckmsg.setError(StringUtils.join(errSet.toArray(new String[0]), " ; "));
                 return sckmsg;
             }else{
-                String uri = msg.substring(matcher.start(),matcher.end()-1);
+                String uri = msg.substring(matcher.start()+4,matcher.end()-1);
                 sckmsg.setUrl(uri);
             }
             sckmsg.setMethod("GET");
             kvMap = getCheck(msg,matcher.end(),allParamList,nullSet);
         }else if (postMatcher.find()){
             sckmsg.setMethod("POST");
-            Pattern urlPattern1 = Pattern.compile("POST /\\w+\\?");
+            Pattern urlPattern1 = Pattern.compile("POST (/\\w+)+\\?");
             Matcher matcher = urlPattern1.matcher(msg);
             if (matcher.find()){
                 String uri = msg.substring(matcher.start()+5,matcher.end()-1);
                 sckmsg.setUrl(uri);
             }else {
-                Pattern urlPattern2 = Pattern.compile("POST /\\w+ ");
+                Pattern urlPattern2 = Pattern.compile("POST (/\\w+)+ ");
                 Matcher matcher1 = urlPattern2.matcher(msg);
                 if (matcher1.find()){
-                    String uri = msg.substring(matcher1.start()+5,matcher1.end());
+                    String uri = msg.substring(matcher1.start()+5,matcher1.end()-1);
                     sckmsg.setUrl(uri);
                 }
             }
