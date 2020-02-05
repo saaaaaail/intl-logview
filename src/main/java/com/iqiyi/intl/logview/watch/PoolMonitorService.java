@@ -3,7 +3,6 @@ package com.iqiyi.intl.logview.watch;
 import com.alibaba.fastjson.JSONObject;
 import com.iqiyi.intl.logview.cache.Cache;
 import com.iqiyi.intl.logview.constant.Constants;
-import com.iqiyi.intl.logview.enums.LogType;
 import com.iqiyi.intl.logview.enums.TypeEnums;
 import com.iqiyi.intl.logview.websocket.FilterParams;
 import com.iqiyi.intl.logview.websocket.SocketMessage;
@@ -394,7 +393,7 @@ public class PoolMonitorService {
 
 
         if (CollectionUtils.isEmpty(errSet)){
-            return generateMsg(msg,null,TypeEnums.MESSAGE_OPERATE.getCode());
+            return generateMsg(msg,null,TypeEnums.NOT_CHECK_MSG_OPERATE.getCode());
         }else {
             return generateMsg(msg,StringUtils.join(errSet.toArray(new String[0])," ; "),TypeEnums.WRONG_MEG_OPERATE.getCode());
         }

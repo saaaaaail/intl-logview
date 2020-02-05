@@ -30,6 +30,7 @@
                 <button class="mdui-btn mdui-btn-raised mdui-ripple mdui-color-theme-accent log-watch-btn" onclick="sendMessageToServer('watch')"><span class=" mdui-text-color-white log-watch-span">查看</span></button>
                 <button class="mdui-btn mdui-btn-raised mdui-ripple mdui-color-theme-accent" onclick="sendMessageToServer('pause')"><span class=" mdui-text-color-white log-pause-span">暂停</span></button>
                 <button class="mdui-btn mdui-btn-raised mdui-ripple mdui-color-theme-accent" onclick="clearMsg()"><span class=" mdui-text-color-white log-clear-span">清屏</span></button>
+<!--                <button class="mdui-btn mdui-btn-raised mdui-ripple mdui-color-theme-accent" onclick="closeConn()"><span class=" mdui-text-color-white log-clear-span">断开</span></button>-->
             </div>
 
         </div>
@@ -75,81 +76,120 @@
 
     <script type="text/javascript" th:inline="javascript">
 
-        function webSocket() {
+        function WebSockf() {
 
-            var webSocket = new WebSocket([[${webSocketUrl}]]);
+            var WebSock = {};
 
-            webSocket.onopen = function (ev) { console.log("建立webSocket连接"); };
+            WebSock.lastHeartBeat = new Date().getTime();
 
-            webSocket.onmessage = function (ev) {
-                console.log("接收到Server端发来的消息");
-                var data = JSON.parse(ev.data) || {};
-                console.log(data);
-                var $messageContainer = $('.log-container');
-                switch (data.type) {
-                    //操作暂停按钮
-                    case 0:
-                        if (data.msg === '1') {
-                            $('.log-pause-span').html('继续');
-                        }else if (data.msg === '0'){
-                            $('.log-pause-span').html('暂停');
-                        }
-                        break;
-                    //有用的消息
-                    case 1:
-                        $('.log-watch-btn').hide();
+            WebSock.overTime = 50000;
 
-                        $messageContainer.prepend('<div class="mdui-text-color-black-* keepline log-content"  style="font-size:x-large">'+ data.msg +'</div>');
-                        if ($messageContainer.children('div').length>320){
-                            console.log("$messageContainer.children('div').length{}:",$messageContainer.children('div'));
-                            $messageContainer.children(':last-child').remove();
-                        }
-                        break;
-                    //错误的消息
-                    case 2:
-                        $('.log-watch-btn').hide();
-                        var error = data.error;
-                        $messageContainer.prepend('<div class="mdui-text-color-red-900 keepline wrong-border mdui-hoverable log-content" mdui-tooltip="{content:\''+error+'\'}" style="font-size:x-large">'+ data.msg +'</div>');
-                        if ($messageContainer.children('div').length>320){
-                            console.log("$messageContainer.children('div').length{}:",$messageContainer.children('div'));
-                            $messageContainer.children(':last-child').remove();
-                        }
-                        break;
-                    //清屏
-                    case 3: clearMsg();break;
-                    //筛选按钮可用
-                    case 4: enableFilterBtn();
-                        break;
-                    default:break;
-                }
-            };
+            WebSock.webSocket = new WebSocket([[${webSocketUrl}]]);
 
-            webSocket.onclose = function (ev) { console.log("关闭webSocket连接"); };
-
-            webSocket.onerror = function(ev) { console.log("webSocket通信异常",ev); };
-
-            webSocket.addEventListener('open',function () {
+            WebSock.webSocket.onopen = function (ev) {
+                console.log("建立webSocket连接");
                 $('#status').removeClass('mdui-text-color-red');
                 $('#status').addClass('mdui-text-color-green');
                 $('#status').text('已连接');
-            });
+                sendMessageToServer("watch");
+            };
 
-            webSocket.addEventListener('close',function () {
-                $('#status').removeClass('mdui-text-color-green');
-                $('#status').addClass('mdui-text-color-red');
-                $('#status').text('已断开');
-            });
+            WebSock.webSocket.onmessage = function (ev) {
+                onMessage(ev);
+            };
 
-            return webSocket;
+            WebSock.webSocket.onclose = function (ev) {
+                onClose(ev);
+            };
+
+            WebSock.webSocket.onerror = function(ev) { console.log("webSocket通信异常",ev); };
+
+
+            return WebSock;
         }
 
-        var webSocket = webSocket();
+        var webSock = WebSockf();
+        var timer = setInterval(checkConn,30000);
+
+        function checkConn() {
+            sendMessageToServer("heart");
+            var gap = (new Date().getTime()-webSock.lastHeartBeat);
+            console.log("时间间隔：{}",gap);
+            if (gap>webSock.overTime){
+                webSock.webSocket.close();
+            }
+        }
+
+        function onClose(ev) {
+            console.log("关闭webSocket连接");
+            $('#status').removeClass('mdui-text-color-green');
+            $('#status').addClass('mdui-text-color-red');
+            $('#status').text('已断开');
+            if (webSock.webSocket.readyState === WebSocket.CLOSED) {
+                webSock = WebSockf();
+            }
+        }
+
+        function onMessage(ev) {
+            console.log("接收到Server端发来的消息");
+            var data = JSON.parse(ev.data) || {};
+            console.log(data);
+            var $messageContainer = $('.log-container');
+            switch (data.type) {
+                //操作暂停按钮
+                case 0:
+                    if (data.msg === '1') {
+                        $('.log-pause-span').html('继续');
+                    }else if (data.msg === '0'){
+                        $('.log-pause-span').html('暂停');
+                    }
+                    break;
+                //不校验的消息
+                case 1:
+                    $('.log-watch-btn').hide();
+
+                    $messageContainer.prepend('<div class="mdui-text-color-black-* keepline log-content"  style="font-size:x-large">'+ data.msg +'</div>');
+                    if ($messageContainer.children('div').length>300){
+                        console.log("$messageContainer.children('div').length{}:",$messageContainer.children('div'));
+                        $messageContainer.children(':last-child').remove();
+                    }
+                    break;
+                //错误的消息
+                case 2:
+                    $('.log-watch-btn').hide();
+                    var error = data.error;
+                    $messageContainer.prepend('<div class="mdui-text-color-red-900 keepline wrong-border mdui-hoverable log-content" mdui-tooltip="{content:\''+error+'\'}" style="font-size:x-large">'+ data.msg +'</div>');
+                    if ($messageContainer.children('div').length>300){
+                        console.log("$messageContainer.children('div').length{}:",$messageContainer.children('div'));
+                        $messageContainer.children(':last-child').remove();
+                    }
+                    break;
+                //正确的消息
+                case 3:
+                    $('.log-watch-btn').hide();
+                    $messageContainer.prepend('<div class="mdui-text-color-green-900 keepline mdui-hoverable log-content" style="font-size:x-large">'+ data.msg +'</div>');
+                    if ($messageContainer.children('div').length>300){
+                        console.log("$messageContainer.children('div').length{}:",$messageContainer.children('div'));
+                        $messageContainer.children(':last-child').remove();
+                    }
+                    break;
+                //筛选按钮可用
+                case 4: enableFilterBtn();
+                    break;
+                //清屏
+                case 5:clearMsg();break;
+                case 6:
+                    webSock.lastHeartBeat = new Date().getTime();
+                    break;
+                default:break;
+            }
+        }
 
         function sendMessageToServer(msg) {
             switch (msg) {
                 case "pause":
                     console.log(msg);
-                    webSocket.send(JSON.stringify({msg:msg}))
+                    webSock.webSocket.send(JSON.stringify({msg:msg}));
                     break;
                 case "watch":
                 case "rewatch":
@@ -161,8 +201,11 @@
                     var pattern = $('#pattern-params > input').val().trim();
                     var filterParams = {uri:uri,bstp:bstp,t:t,rpage:rpage,u:u};
                     console.log(filterParams);
-                    webSocket.send(JSON.stringify({msg:msg,params:filterParams,pattern:pattern}))
+                    webSock.webSocket.send(JSON.stringify({msg:msg,params:filterParams,pattern:pattern}))
                     $('#filter-btn').attr('disabled','disabled');
+                    break;
+                case "heart":
+                    webSock.webSocket.send(JSON.stringify({msg:msg}));
                     break;
             }
         }
@@ -176,6 +219,10 @@
             $('#filter-btn').removeAttr('disabled');
         }
 
+        function closeConn() {
+            webSock.webSocket.close();
+        }
+
         function isNull(str) {
             if ( str == "" ) {
                 return true;
@@ -184,6 +231,9 @@
             var re = new RegExp(regu);
             return re.test(str);
         }
+
+
+
 
     </script>
 </body>

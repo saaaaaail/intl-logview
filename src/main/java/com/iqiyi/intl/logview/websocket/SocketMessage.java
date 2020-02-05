@@ -14,8 +14,6 @@ public class SocketMessage {
 
     private String msg;
 
-    private String user;
-
     private Integer type;
 
     private String error;
