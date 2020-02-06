@@ -3,12 +3,14 @@ package com.iqiyi.intl.logview.service;
 import com.iqiyi.intl.logview.mapper.RulesMapper;
 import com.iqiyi.intl.logview.exception.IntlRuntimeException;
 import com.iqiyi.intl.logview.model.Rules;
+import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
 import org.springframework.stereotype.Service;
 
 import javax.annotation.Resource;
 
 @Service
+@Slf4j
 public class RulesService {
 
     @Resource
@@ -23,6 +25,7 @@ public class RulesService {
 
     public String selectByUserName(String userName){
         Rules rules = rulesMapper.selectByUsername(userName);
+
         if (rules!=null&& StringUtils.isNotEmpty(rules.getCheckStr())){
             return rules.getCheckStr();
         }

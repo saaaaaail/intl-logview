@@ -17,7 +17,7 @@ public class Constants {
     ///usr/local/nginx/logs/logview/
     public static final String WATCH_FILE_CATEGORY = "/usr/local/nginx/logs/logview/";
     ///usr/local/nginx/logs/logview/access.log
-    //E:/test/accesslog.txt
+    //D:/tmp/accesslog.txt
     public static final String WATCH_FILE_PATH = "/usr/local/nginx/logs/logview/access.log";
 
     public static final String DEFAULT_USER = "default_user";

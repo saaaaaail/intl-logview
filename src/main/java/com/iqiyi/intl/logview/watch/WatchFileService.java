@@ -142,7 +142,7 @@ public class WatchFileService {
             String msgline = null;
             while ((msgline = file.readLine())!=null){
                 String msg = new String(msgline.getBytes(StandardCharsets.ISO_8859_1),StandardCharsets.UTF_8).trim();
-                if (StringUtils.isNotEmpty(msg)&&msg.contains(Constants.SRC_TARGET_IP)&&msg.startsWith(Constants.SRC_TARGET_IP)){
+                if (StringUtils.isNotEmpty(msg)&&containsIp(msg)){
                     result.add(msg);
                 }
             }
@@ -182,7 +182,7 @@ public class WatchFileService {
                     String msg = null;
                     if ((msg = file.readLine())!=null){
                         String msgline = new String(msg.getBytes(StandardCharsets.ISO_8859_1), StandardCharsets.UTF_8).trim();
-                        if (StringUtils.isNotEmpty(msgline)&&msg.contains(Constants.SRC_TARGET_IP)&&msgline.startsWith(Constants.SRC_TARGET_IP)) {
+                        if (StringUtils.isNotEmpty(msgline)&&containsIp(msgline)) {
                             result.add(msgline);
                         }
                     }
@@ -192,7 +192,7 @@ public class WatchFileService {
                     String msg = null;
                     if ((msg = file.readLine())!=null){
                         String msgline = new String(msg.getBytes(StandardCharsets.ISO_8859_1), StandardCharsets.UTF_8).trim();
-                        if (StringUtils.isNotEmpty(msgline)&&msg.contains(Constants.SRC_TARGET_IP)&&msgline.startsWith(Constants.SRC_TARGET_IP)){
+                        if (StringUtils.isNotEmpty(msgline)&&containsIp(msgline)){
                             result.add(msgline);
                         }
                     }
@@ -286,12 +286,12 @@ public class WatchFileService {
             Pattern postPattern = Pattern.compile("\"(POST)[ ]/");
             Matcher postMatcher = postPattern.matcher(msg);
             if (postMatcher.find()){
-                Pattern bodyPattern = Pattern.compile("body:\"msg=\\[\\{.*}]\"");
+                Pattern bodyPattern = Pattern.compile("<rb>\"msg=.*\"</rb>");
                 Matcher bodyMatcher = bodyPattern.matcher(msg);
                 if (bodyMatcher.find()){
-                    String preMsg = msg.substring(0, bodyMatcher.start()+10);
-                    String msgBody = msg.substring(bodyMatcher.start()+10, bodyMatcher.end()-1);
-                    String postMsg = msg.substring(bodyMatcher.end()-1);
+                    String preMsg = msg.substring(0, bodyMatcher.start()+9);
+                    String msgBody = msg.substring(bodyMatcher.start()+9, bodyMatcher.end()-6);
+                    String postMsg = msg.substring(bodyMatcher.end()-6);
                     msgBody = msgBody.replace("\\t","").replace("\\n","").replace("\\","");
                     log.info(msgBody);
                     if (isJsonArray(msgBody)){
@@ -304,6 +304,12 @@ public class WatchFileService {
                             String tmpMsg = preMsg +"["+JSONObject.toJSONString(o)+"]"+postMsg;
                             splitSckMsg.add(generateMsg(tmpMsg,null,null,groupId));
                         }
+                        continue;
+                    }
+                    if (isJsonObject(msgBody)){
+                        JSONObject jsonObject = JSONObject.parseObject(msgBody);
+                        String tmpMsg = preMsg + "["+JSONObject.toJSONString(jsonObject)+"]"+postMsg;
+                        splitSckMsg.add(generateMsg(tmpMsg,null,null,null));
                         continue;
                     }
                 }
@@ -614,13 +620,13 @@ public class WatchFileService {
 
     private Map<String,String> postCheck(String msg){
         Map<String,String> kvMap = new HashMap<>();
-
-        Pattern bodyPattern = Pattern.compile("body:\"msg=\\[\\{.*}]\"");
+        msg = msg.replace("\\t","").replace("\\n","").replace("\\","");
+        Pattern bodyPattern = Pattern.compile("<rb>\"msg=\\[\\{.*}]\"</rb>");
         Matcher bodyMatcher = bodyPattern.matcher(msg);
         if (bodyMatcher.find()) {
-            String preMsg = msg.substring(0, bodyMatcher.start()+10);
-            String msgBody = msg.substring(bodyMatcher.start()+10, bodyMatcher.end()-1);
-            String postMsg = msg.substring(bodyMatcher.end()-1);
+            String preMsg = msg.substring(0, bodyMatcher.start()+9);
+            String msgBody = msg.substring(bodyMatcher.start()+9, bodyMatcher.end()-6);
+            String postMsg = msg.substring(bodyMatcher.end()-6);
             //清空body里面的换行符制表符右斜杠
             msgBody = msgBody.replace("\\t","").replace("\\n","").replace("\\","");
             log.info(msgBody);
@@ -728,4 +734,12 @@ public class WatchFileService {
         return true;
     }
 
+    private boolean containsIp(String msg){
+        String ipStr = Constants.SRC_TARGET_IP;
+        String[] ips = ipStr.split(",");
+        for (String ip : ips) {
+            if (msg.contains(ip)&&msg.startsWith(ip)){return true;}
+        }
+        return false;
+    }
 }

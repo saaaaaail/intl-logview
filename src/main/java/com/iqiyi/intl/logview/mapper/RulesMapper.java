@@ -13,10 +13,10 @@ public interface RulesMapper {
     @Update({"update `logview_rules` set `check_str`=#{checkStr} where `username`=#{userName}"})
     int update(@Param("userName") String userName,@Param("checkStr") String checkStr);
 
-    @Select({"select 1 from `logview_rules` where `username`=#{userName}"})
+    @Select({"select * from `logview_rules` where `username`=#{userName}"})
     @Results({@Result(property = "id",column = "id"),
-            @Result(property = "username",column = "userName"),
-            @Result(property = "check_str",column = "checkStr")
+            @Result(property = "userName",column = "username"),
+            @Result(property = "checkStr",column = "check_str")
             })
     Rules selectByUsername(@Param("userName") String userName);
 }
