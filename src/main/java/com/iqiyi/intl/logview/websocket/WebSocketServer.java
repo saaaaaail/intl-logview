@@ -4,6 +4,7 @@ import com.alibaba.fastjson.JSONObject;
 import com.iqiyi.intl.logview.watch.PoolMonitorService;
 import com.iqiyi.intl.logview.watch.WatchFileService;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.commons.lang3.StringUtils;
 import org.springframework.context.ApplicationContext;
 import org.springframework.stereotype.Component;
 
@@ -50,6 +51,7 @@ public class WebSocketServer {
     public void onMessage(Session session,String jsonStr) throws IOException {
         SocketMessage socketMessage = JSONObject.parseObject(jsonStr, SocketMessage.class);
         log.info("接收到客户端的消息:{}",socketMessage);
+        String userName = getUserName(socketMessage.getMsg());
         if (socketMessage.getMsg().equals("pause")){
             //poolMonitorService.pauseThread(session);
             watchFileService.pauseMonitor(session);
@@ -62,6 +64,8 @@ public class WebSocketServer {
             watchFileService.startProcess(session,sessionMap,socketMessage);
         }else if (socketMessage.getMsg().equals("heart")){
             watchFileService.heartBeat(session);
+        }else if (StringUtils.isNotEmpty(userName)){
+            watchFileService.coverCheckUserName(session,userName);
         }
     }
 
@@ -76,6 +80,8 @@ public class WebSocketServer {
         try {
             watchFileService.closeWatchService(session);
             watchFileService.closePool(session);
+            watchFileService.clearCheckUserName(session);
+            watchFileService.clearPointer(session);
             session.close();
         } catch (IOException e) {
             e.printStackTrace();
@@ -96,5 +102,19 @@ public class WebSocketServer {
         applicationContext = context;
     }
 
-
+    private String getUserName(String s){
+        JSONObject jsonObject = null;
+        try{
+            jsonObject = JSONObject.parseObject(s);
+        }catch (Exception e){
+            return null;
+        }
+        if (jsonObject!=null){
+            String userName = jsonObject.getString("userName");
+            if (StringUtils.isNotEmpty(userName)){
+                return userName;
+            }
+        }
+        return null;
+    }
 }

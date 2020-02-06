@@ -3,6 +3,9 @@ package com.iqiyi.intl.logview.websocket;
 import com.alibaba.fastjson.JSONObject;
 import lombok.Data;
 
+import java.util.List;
+import java.util.Map;
+
 /**
  * @program: intl-logview
  * @description:
@@ -29,6 +32,6 @@ public class SocketMessage {
 
     private Integer type;
 
-    private String error;
+    private List<Map<String,String>> error;
 
 }

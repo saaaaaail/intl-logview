@@ -394,12 +394,12 @@ public class PoolMonitorService {
         if (CollectionUtils.isEmpty(errSet)){
             return generateMsg(msg,null,TypeEnums.NOT_CHECK_MSG_OPERATE.getCode());
         }else {
-            return generateMsg(msg,StringUtils.join(errSet.toArray(new String[0])," ; "),TypeEnums.WRONG_MEG_OPERATE.getCode());
+            return generateMsg(msg,null,TypeEnums.WRONG_MEG_OPERATE.getCode());
         }
 
     }
 
-    private SocketMessage generateMsg(String msg,String error,Integer type){
+    private SocketMessage generateMsg(String msg,List<Map<String,String>> error,Integer type){
         SocketMessage socketMessage =new SocketMessage();
         socketMessage.setMsg(msg);
         socketMessage.setError(error);

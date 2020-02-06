@@ -1,14 +1,15 @@
 package com.iqiyi.intl.logview.watch;
 
-import com.alibaba.fastjson.JSON;
 import com.alibaba.fastjson.JSONArray;
 import com.alibaba.fastjson.JSONObject;
 import com.iqiyi.intl.logview.cache.Cache;
 import com.iqiyi.intl.logview.constant.Constants;
+import com.iqiyi.intl.logview.dto.CheckParam;
+import com.iqiyi.intl.logview.dto.TypeParam;
+import com.iqiyi.intl.logview.enums.MatchEnums;
 import com.iqiyi.intl.logview.enums.TypeEnums;
-import com.iqiyi.intl.logview.websocket.FilterParams;
+import com.iqiyi.intl.logview.service.RulesService;
 import com.iqiyi.intl.logview.websocket.SocketMessage;
-import com.sun.org.apache.bcel.internal.generic.IF_ACMPEQ;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -22,7 +23,6 @@ import java.io.IOException;
 import java.io.RandomAccessFile;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.*;
-import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.ZoneOffset;
 import java.time.format.DateTimeFormatter;
@@ -48,9 +48,8 @@ public class WatchFileService {
     @Qualifier("localCache")
     private Cache cache;
 
-    private Integer count = 0;
-
-    private Long pointer = 0L;
+    @Autowired
+    private RulesService rulesService;
 
     private boolean isPause = false;
 
@@ -58,6 +57,7 @@ public class WatchFileService {
         log.info("校验是否第一次读取文件");
         String watchServiceKey = Constants.WATCH_SERVICE_KEY + host.getId();
         String poolKey = Constants.THREAD_POOL+host.getId();
+        String pointerKey = Constants.POINTER_KEY + host.getId();
         synchronized (this){
             Object o1 = cache.get(watchServiceKey);
             Object o2 = cache.get(poolKey);
@@ -78,16 +78,19 @@ public class WatchFileService {
         //恢复暂停操作
         recoverPause(host);
 
-        pointer = firstReadFile(host);
+        CheckParam checkParam = parseCheckStr(host);
+        Long pointer = firstReadFile(host,checkParam);
+        cache.add(pointerKey,pointer);//更新指针
+
         //筛选按钮可用
         enableFilterBtnMsg(host);
         log.info("筛选按钮可用");
         //开始实时读取文件
-        startMonitor(host,sessionMap);
+        startMonitor(host,sessionMap,checkParam);
 
     }
 
-    public void startMonitor(Session session,Map<Session, SocketMessage> sessionMap) throws IOException {
+    public void startMonitor(Session session,Map<Session, SocketMessage> sessionMap,CheckParam checkParam) throws IOException {
         String poolKey = Constants.THREAD_POOL+session.getId();
         String watchServiceKey = Constants.WATCH_SERVICE_KEY + session.getId();
 
@@ -105,7 +108,7 @@ public class WatchFileService {
                             log.info("Constants.WATCH_FILE:"+Constants.WATCH_FILE+" pollEvent.context():"+pollEvent.context());
                             if (Constants.WATCH_FILE.equals(pollEvent.context().toString())){
                                 log.info("readFile:access.log");
-                                readFile(session,sessionMap);
+                                readFile(session,sessionMap,checkParam);
                             }
                         }
                     }
@@ -128,9 +131,11 @@ public class WatchFileService {
 
     }
 
-    public void readFile(Session session,Map<Session, SocketMessage> sessionMap) throws IOException {
+    public void readFile(Session session,Map<Session, SocketMessage> sessionMap,CheckParam checkParam) throws IOException {
         RandomAccessFile file = null;
         List<String> result = new ArrayList<>();
+        String pointerKey = Constants.POINTER_KEY + session.getId();
+        Long pointer = (Long) cache.get(pointerKey);
         try {
             file = new RandomAccessFile(Constants.WATCH_FILE_PATH,"r");
             file.seek(pointer);
@@ -142,6 +147,7 @@ public class WatchFileService {
                 }
             }
             pointer = file.getFilePointer();
+            cache.add(pointerKey,pointer);
         } catch (FileNotFoundException e) {
             e.printStackTrace();
         }finally {
@@ -151,7 +157,7 @@ public class WatchFileService {
             }
         }
 
-        sendMessage(session,result);
+        sendMessage(session,result,checkParam);
 
     }
 
@@ -160,7 +166,7 @@ public class WatchFileService {
      * @param session
      * @return
      */
-    private Long firstReadFile(Session session){
+    private Long firstReadFile(Session session,CheckParam checkParam){
         RandomAccessFile file = null;
         List<String> result = new ArrayList<>();
         Long point = 0L;
@@ -200,7 +206,7 @@ public class WatchFileService {
                 }
             }
 
-            sendMessage(session,result);
+            sendMessage(session,result,checkParam);
 
             log.info("end randomAccessFile");
             return fileLength;
@@ -256,14 +262,14 @@ public class WatchFileService {
 //        }
 //    }
 
-    public void sendMessage(Session session, List<String> msgs){
+    public void sendMessage(Session session, List<String> msgs,CheckParam checkParam){
 //        String filterParamsKey = Constants.FILTER_PARAMS_KEY + session.getId();
 //        SocketMessage o = (SocketMessage)cache.get(filterParamsKey);
         List<SocketMessage> splitSckMsg = splitMessage(msgs);
         log.info(JSONObject.toJSONString(splitSckMsg));
         for (int i=splitSckMsg.size()-1;i>=0;i--) {
             SocketMessage sckMsg = splitSckMsg.get(i);
-            SocketMessage socketMessage = parseMessage(sckMsg);
+            SocketMessage socketMessage = parseMessage(sckMsg,checkParam);
             try {
                 session.getBasicRemote().sendText(JSONObject.toJSONString(socketMessage));
             } catch (IOException e) {
@@ -337,6 +343,27 @@ public class WatchFileService {
         }
     }
 
+    public void coverCheckUserName(Session session, String userName){
+        String checkUserNameKey = Constants.CHECK_USERNAME_KEY + session.getId();
+        cache.add(checkUserNameKey,userName);
+    }
+
+    public void clearCheckUserName(Session session){
+        String checkUserNameKey = Constants.CHECK_USERNAME_KEY + session.getId();
+        Object o = cache.get(checkUserNameKey);
+        if (o!=null){
+            cache.remove(checkUserNameKey);
+        }
+    }
+
+    public void clearPointer(Session session){
+        String pointerKey = Constants.POINTER_KEY + session.getId();
+        Object o = cache.get(pointerKey);
+        if (o!=null){
+            cache.remove(pointerKey);
+        }
+    }
+
     private void recoverPause(Session session){
         isPause=false;
         SocketMessage socketMessage = generateMsg("0",null,TypeEnums.PAUSE_OPERATE.getCode(),null);
@@ -356,76 +383,18 @@ public class WatchFileService {
         }
     }
 
-
-
-    private boolean filterMessage(String msg,FilterParams params,String patternStr){
-        if (StringUtils.isNotEmpty(patternStr)){
-            Pattern patternUri = Pattern.compile(patternStr);
-            Matcher matcher = patternUri.matcher(msg);
-            if (matcher.find()) {
-                return true;
-            }
-            return false;
+    private CheckParam parseCheckStr(Session session){
+        String checkUserNameKey = Constants.CHECK_USERNAME_KEY + session.getId();
+        String userName = (String) cache.get(checkUserNameKey);
+        if(StringUtils.isEmpty(userName)){
+            userName = Constants.DEFAULT_USER;
         }
-
-        msg = msg.trim();
-        //公共字段
-        String[] comParam = Constants.commonParams.split(",");
-        List<String> comList = new ArrayList<>(Arrays.asList(comParam));
-
-        List<String> allParamList = new ArrayList<>();
-        allParamList.addAll(comList);
-        allParamList.addAll(Arrays.asList(Constants.t_20_params.split(",")));
-        allParamList.addAll(Arrays.asList(Constants.t_21_params.split(",")));
-        //所有字段
-        allParamList = allParamList.stream().distinct().collect(Collectors.toList());
-        Map<String,String> kvMap = new HashMap<>();
-        Pattern getPattern = Pattern.compile("\"(GET)[ ]/");
-        Matcher getMatcher = getPattern.matcher(msg);
-        Pattern postPattern = Pattern.compile("\"(POST)[ ]/");
-        Matcher postMatcher = postPattern.matcher(msg);
-        if (getMatcher.find()){
-            Pattern pattern = Pattern.compile("/\\w+\\?");
-            Matcher matcher = pattern.matcher(msg);
-            if (!matcher.find()){
-                return false;
-            }
-            kvMap = getCheck(msg,matcher.end(),allParamList,null);
-        }else if (postMatcher.find()){
-            kvMap = postCheck(msg,allParamList,null);
-        }
-
-        if (StringUtils.isNotEmpty(params.getUri())){
-            if (!msg.contains(params.getUri())){
-                return false;
-            }
-        }
-        if (StringUtils.isNotEmpty(params.getBstp())){
-            if (kvMap.get("bstp")==null||kvMap.get("bstp")!=null&&!kvMap.get("bstp").equals(params.getBstp())){
-                return false;
-            }
-        }
-        if (StringUtils.isNotEmpty(params.getT())){
-            if (kvMap.get("t")==null||kvMap.get("t")!=null&&!kvMap.get("t").equals(params.getT())){
-                return false;
-            }
-        }
-        if (StringUtils.isNotEmpty(params.getRpage())){
-            if (kvMap.get("rpage")==null||kvMap.get("rpage")!=null&&!kvMap.get("rpage").equals(params.getRpage())){
-                return false;
-            }
-        }
-        if (StringUtils.isNotEmpty(params.getU())){
-            if (kvMap.get("u")==null||kvMap.get("u")!=null&&!kvMap.get("u").equals(params.getU())){
-                return false;
-            }
-        }
-        return true;
+        String checkStr = rulesService.selectByUserName(userName);
+        CheckParam checkParam = JSONObject.parseObject(checkStr, CheckParam.class);
+        return checkParam;
     }
 
-
-
-    private SocketMessage parseMessage(SocketMessage sckmsg){
+    private SocketMessage parseMessage(SocketMessage sckmsg,CheckParam checkParam){
         String msg = sckmsg.getMsg();
         Set<String> errSet = new LinkedHashSet<>();
         Set<String> lackSet = new LinkedHashSet<>();
@@ -450,15 +419,14 @@ public class WatchFileService {
             Matcher matcher = pattern.matcher(msg);
             if (!matcher.find()){
                 errSet.add("/\\w+\\?此正则匹配失败");
-                sckmsg.setType(TypeEnums.WRONG_MEG_OPERATE.getCode());
-                sckmsg.setError(StringUtils.join(errSet.toArray(new String[0]), " ; "));
+                sckmsg.setType(TypeEnums.NOT_CHECK_MSG_OPERATE.getCode());
                 return sckmsg;
             }else{
                 String uri = msg.substring(matcher.start()+4,matcher.end()-1);
                 sckmsg.setUrl(uri);
             }
             sckmsg.setMethod("GET");
-            kvMap = getCheck(msg,matcher.end(),allParamList,nullSet);
+            kvMap = getCheck(msg,matcher.end());
         }else if (postMatcher.find()){
             sckmsg.setMethod("POST");
             Pattern urlPattern1 = Pattern.compile("POST (/\\w+)+\\?");
@@ -474,7 +442,7 @@ public class WatchFileService {
                     sckmsg.setUrl(uri);
                 }
             }
-            kvMap = postCheck(msg,allParamList,nullSet);
+            kvMap = postCheck(msg);
         }
 
         //校验前构建消息体
@@ -491,63 +459,160 @@ public class WatchFileService {
             params.put(entry.getKey(),entry.getValue());
         }
         sckmsg.setParams(params);
-        //判断是否需要校验
-        String logTypeId = kvMap.get("t");
-        if (StringUtils.isEmpty(logTypeId)||StringUtils.isNotEmpty(logTypeId)&&!"20".equals(logTypeId)&&!"21".equals(logTypeId)){
-            sckmsg.setType(TypeEnums.NOT_CHECK_MSG_OPERATE.getCode());
-            return sckmsg;
-        }
-        //判断缺少公共字段
-        for (String com : comList) {
-            if (kvMap.get(com)==null){
-                if (com.equals("ntwk")&&kvMap.get("net_work")!=null){
-                    continue;
+
+        //判断url是否需要校验
+        String matchUrl = checkParam.getUrl();
+        if (checkParam.getUseReg()&&StringUtils.isNotEmpty(checkParam.getReg())){
+            Pattern pattern = Pattern.compile(checkParam.getReg());
+            Matcher matcher = pattern.matcher(sckmsg.getUrl());
+            if (checkParam.getUrlMatch().equals(MatchEnums.BLURRY.getCode())){
+                if (!matcher.find()){
+                    sckmsg.setType(TypeEnums.NOT_CHECK_MSG_OPERATE.getCode());
+                    return sckmsg;
                 }
-                lackSet.add(com);
+            }else if (checkParam.getUrlMatch().equals(MatchEnums.EXACT.getCode())){
+                if (!matcher.matches()){
+                    sckmsg.setType(TypeEnums.NOT_CHECK_MSG_OPERATE.getCode());
+                    return sckmsg;
+                }
+            }
+        }else {
+            if (checkParam.getUrlMatch().equals(MatchEnums.BLURRY.getCode())){
+                if (!sckmsg.getUrl().contains(matchUrl)){
+                    sckmsg.setType(TypeEnums.NOT_CHECK_MSG_OPERATE.getCode());
+                    return sckmsg;
+                }
+            }else if (checkParam.getUrlMatch().equals(MatchEnums.EXACT.getCode())){
+                if (!sckmsg.getUrl().equals(matchUrl)){
+                    sckmsg.setType(TypeEnums.NOT_CHECK_MSG_OPERATE.getCode());
+                    return sckmsg;
+                }
             }
         }
 
-        ArrayList<String> tList = null;
-        switch (logTypeId){
-            case "20":
-                tList = new ArrayList<>(Arrays.asList(Constants.t_20_params.split(",")));
-                break;
-            case "21":
-                tList = new ArrayList<>(Arrays.asList(Constants.t_21_params.split(",")));
-                break;
-            default:
-                tList = new ArrayList<>();
-                break;
-        }
-        for (String t : tList) {
-            if (kvMap.get(t)==null){
-                lackSet.add(t);
+        List<Map<String,String>> error = new ArrayList<>();
+        List<List<TypeParam>> rules = checkParam.getRules();
+        boolean isCorrect = true;
+        for (int i=0;i<rules.size();i++){
+            Map<String,String> errorMap = new HashMap<>();
+            List<TypeParam> typeParams = rules.get(i);
+            for (TypeParam typeParam : typeParams) {
+                String key = typeParam.getType();
+                Object o = params.get(key);
+                if (o==null){
+                    if ("ntwk".equals(key)&&params.get("net_work")!=null){
+                        o = params.get("net_work");
+                    }else if ("net_work".equals(key)&&params.get("ntwk")!=null){
+                        o = params.get("ntwk");
+                    }else {
+                        errorMap.put(typeParam.getType(),"校验的url中无指定的字段");
+                        continue;
+                    }
+                }
+                if (typeParam.getUseReg()&&StringUtils.isNotEmpty(typeParam.getReg())){
+                    Pattern valuePattern = Pattern.compile(typeParam.getReg());
+                    Matcher valueMatcher = valuePattern.matcher(o.toString());
+                    if (typeParam.getMatch().equals(MatchEnums.BLURRY.getCode())){
+                        if (!valueMatcher.find()){
+                            errorMap.put(typeParam.getType(),"值不匹配");
+                            continue;
+                        }
+                    }else if (typeParam.getMatch().equals(MatchEnums.EXACT.getCode())){
+                        if (!valueMatcher.matches()){
+                            errorMap.put(typeParam.getType(),"值不匹配");
+                            continue;
+                        }
+                    }
+                }else {
+                    if (typeParam.getEmpty()==1&&StringUtils.isEmpty(o.toString())){
+                        errorMap.put(typeParam.getType(),"值为空");
+                        continue;
+                    }
+                    if (StringUtils.isNotEmpty(typeParam.getValue())){
+                        if (typeParam.getMatch().equals(MatchEnums.BLURRY.getCode())){
+                            if (isLong(typeParam.getValue())||!o.toString().contains(typeParam.getValue())){
+                                errorMap.put(typeParam.getType(),"值不匹配");
+                                continue;
+                            }
+                        }else if (typeParam.getMatch().equals(MatchEnums.EXACT.getCode())){
+                            if (!o.toString().equals(typeParam.getValue())){
+                                errorMap.put(typeParam.getType(),"值不匹配");
+                                continue;
+                            }
+                        }
+                    }
+                }
             }
+            if (isCorrect&&errorMap.size()!=0){
+                isCorrect=false;
+            }
+            error.add(errorMap);
         }
 
-
-        if (!CollectionUtils.isEmpty(lackSet)){
-            String err = "缺少"+StringUtils.join(lackSet.toArray(new String[0])," , ") +"字段";
-            errSet.add(err);
-        }
-
-        if (!CollectionUtils.isEmpty(nullSet)){
-            String err = StringUtils.join(nullSet.toArray(new String[0])," , ") + "值为null";
-            errSet.add(err);
-        }
-
-        if (CollectionUtils.isEmpty(errSet)){
+        sckmsg.setError(error);
+        if (isCorrect){
             sckmsg.setType(TypeEnums.RIGHT_MSG_OPERATE.getCode());
-            return sckmsg;
         }else {
             sckmsg.setType(TypeEnums.WRONG_MEG_OPERATE.getCode());
-            sckmsg.setError(StringUtils.join(errSet.toArray(new String[0])," ; "));
-            return sckmsg;
         }
+        return sckmsg;
+//        //判断是否需要校验
+//        String logTypeId = kvMap.get("t");
+//        if (StringUtils.isEmpty(logTypeId)||StringUtils.isNotEmpty(logTypeId)&&!"20".equals(logTypeId)&&!"21".equals(logTypeId)){
+//            sckmsg.setType(TypeEnums.NOT_CHECK_MSG_OPERATE.getCode());
+//            return sckmsg;
+//        }
+//        //判断缺少公共字段
+//        for (String com : comList) {
+//            if (kvMap.get(com)==null){
+//                if (com.equals("ntwk")&&kvMap.get("net_work")!=null){
+//                    continue;
+//                }
+//                lackSet.add(com);
+//            }
+//        }
+//
+//        ArrayList<String> tList = null;
+//        switch (logTypeId){
+//            case "20":
+//                tList = new ArrayList<>(Arrays.asList(Constants.t_20_params.split(",")));
+//                break;
+//            case "21":
+//                tList = new ArrayList<>(Arrays.asList(Constants.t_21_params.split(",")));
+//                break;
+//            default:
+//                tList = new ArrayList<>();
+//                break;
+//        }
+//        for (String t : tList) {
+//            if (kvMap.get(t)==null){
+//                lackSet.add(t);
+//            }
+//        }
+//
+//
+//        if (!CollectionUtils.isEmpty(lackSet)){
+//            String err = "缺少"+StringUtils.join(lackSet.toArray(new String[0])," , ") +"字段";
+//            errSet.add(err);
+//        }
+//
+//        if (!CollectionUtils.isEmpty(nullSet)){
+//            String err = StringUtils.join(nullSet.toArray(new String[0])," , ") + "值为null";
+//            errSet.add(err);
+//        }
+//
+//        if (CollectionUtils.isEmpty(errSet)){
+//            sckmsg.setType(TypeEnums.RIGHT_MSG_OPERATE.getCode());
+//            return sckmsg;
+//        }else {
+//            sckmsg.setType(TypeEnums.WRONG_MEG_OPERATE.getCode());
+//            sckmsg.setError(StringUtils.join(errSet.toArray(new String[0])," ; "));
+//            return sckmsg;
+//        }
     }
 
 
-    private Map<String,String> postCheck(String msg,List<String> allParamList,Set<String> nullSet){
+    private Map<String,String> postCheck(String msg){
         Map<String,String> kvMap = new HashMap<>();
 
         Pattern bodyPattern = Pattern.compile("body:\"msg=\\[\\{.*}]\"");
@@ -563,9 +628,10 @@ public class WatchFileService {
                 JSONArray jsonArray = JSONObject.parseArray(msgBody);
                 Set<Map.Entry<String, Object>> entries = ((JSONObject)jsonArray.get(0)).entrySet();
                 for (Map.Entry<String, Object> entry : entries) {
-                    kvMap.put(entry.getKey(),entry.getValue().toString());
-                    if (StringUtils.isEmpty(entry.getValue().toString())&&allParamList.contains(entry.getKey())&&nullSet!=null){
-                        nullSet.add(entry.getKey());
+                    if (StringUtils.isEmpty(entry.getValue().toString())){
+                        kvMap.put(entry.getKey(),"");
+                    }else {
+                        kvMap.put(entry.getKey(),entry.getValue().toString());
                     }
                 }
             }
@@ -581,16 +647,13 @@ public class WatchFileService {
             for (String param : new ArrayList<>(Arrays.asList(kvParams))) {
                 String[] kv = param.split("=");
                 if (kv.length==2){
-                    if (StringUtils.isEmpty(kv[1])&&nullSet!=null){
-                        nullSet.add(kv[0]);
+                    if (StringUtils.isEmpty(kv[1])){
+                        kvMap.put(kv[0],"");
                     }
                     kvMap.put(kv[0],kv[1]);
                 }else {
-                    if (StringUtils.isNotEmpty(kv[0])&&(allParamList.contains(kv[0])||kv[0].equals("net_work"))){
+                    if (StringUtils.isNotEmpty(kv[0])){
                         kvMap.put(kv[0],"");
-                        if (nullSet!=null){
-                            nullSet.add(kv[0]);
-                        }
                     }
                 }
             }
@@ -599,7 +662,7 @@ public class WatchFileService {
     }
 
 
-    private Map<String,String> getCheck(String msg,Integer matchEnd,List<String> allParamList,Set<String> nullSet){
+    private Map<String,String> getCheck(String msg,Integer matchEnd){
         Map<String,String> kvMap = new HashMap<>();
 
         //判断值空
@@ -611,22 +674,19 @@ public class WatchFileService {
             String[] kv = param.split("=");
             if (kv.length==2){
                 if (StringUtils.isEmpty(kv[1])){
-                    nullSet.add(kv[0]);
+                    kvMap.put(kv[0],"");
                 }
                 kvMap.put(kv[0],kv[1]);
             }else {
-                if (StringUtils.isNotEmpty(kv[0])&&(allParamList.contains(kv[0])||kv[0].equals("net_work"))){
+                if (StringUtils.isNotEmpty(kv[0])){
                     kvMap.put(kv[0],"");
-                    if (!CollectionUtils.isEmpty(nullSet)){
-                        nullSet.add(kv[0]);
-                    }
                 }
             }
         }
         return kvMap;
     }
 
-    private SocketMessage generateMsg(String msg,String error,Integer type,String groupId){
+    private SocketMessage generateMsg(String msg,List<Map<String,String>> error,Integer type,String groupId){
         SocketMessage socketMessage =new SocketMessage();
         socketMessage.setMsg(msg);
         socketMessage.setError(error);
@@ -657,6 +717,15 @@ public class WatchFileService {
         LocalDateTime localDateTime = LocalDateTime.parse(time, DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss"));
         long timeStamp = localDateTime.toInstant(ZoneOffset.ofHours(8)).toEpochMilli();
         return timeStamp;
+    }
+
+    private boolean isLong(String num){
+        try{
+            long l = Long.parseLong(num);
+        }catch (Exception e){
+            return false;
+        }
+        return true;
     }
 
 }

@@ -20,9 +20,13 @@ public class Constants {
     //E:/test/accesslog.txt
     public static final String WATCH_FILE_PATH = "/usr/local/nginx/logs/logview/access.log";
 
+    public static final String DEFAULT_USER = "default_user";
+
     public static final String WATCH_SERVICE_KEY = "watch_service_";
 
-    public static final String FILTER_PARAMS_KEY = "filter_params_";
+    public static final String CHECK_USERNAME_KEY = "check_username_";
+
+    public static final String POINTER_KEY = "pointer_";
 
     public static final String SCHEDULED_POOL = "scheduled_pool_";
 
