@@ -16,6 +16,8 @@ public enum  TypeEnums {
     ENABLE_FILTER_BTN_OPERATE(4,"筛选按钮可用操作"),
     CLEAR_MSG_OPERATE(5,"清屏操作"),
     HEART_MSG_OPERATE(6,"心跳操作"),
+    CHECK_WRONG_MSG_OPERATE(7,"用户名匹配不正确操作"),
+    CHECK_RIGHT_MSG_OPERATE(8,"用户名匹配正确操作"),
     ;
     private Integer code;
     private String name;

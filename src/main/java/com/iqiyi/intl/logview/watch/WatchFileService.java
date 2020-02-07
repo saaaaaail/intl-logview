@@ -79,6 +79,7 @@ public class WatchFileService {
         recoverPause(host);
 
         CheckParam checkParam = parseCheckStr(host);
+        log.info("校验条件:"+JSONObject.toJSONString(checkParam));
         Long pointer = firstReadFile(host,checkParam);
         cache.add(pointerKey,pointer);//更新指针
 
@@ -266,7 +267,7 @@ public class WatchFileService {
 //        String filterParamsKey = Constants.FILTER_PARAMS_KEY + session.getId();
 //        SocketMessage o = (SocketMessage)cache.get(filterParamsKey);
         List<SocketMessage> splitSckMsg = splitMessage(msgs);
-        log.info(JSONObject.toJSONString(splitSckMsg));
+
         for (int i=splitSckMsg.size()-1;i>=0;i--) {
             SocketMessage sckMsg = splitSckMsg.get(i);
             SocketMessage socketMessage = parseMessage(sckMsg,checkParam);
@@ -350,8 +351,20 @@ public class WatchFileService {
     }
 
     public void coverCheckUserName(Session session, String userName){
-        String checkUserNameKey = Constants.CHECK_USERNAME_KEY + session.getId();
-        cache.add(checkUserNameKey,userName);
+        String checkStr = rulesService.selectByUserName(userName);
+        SocketMessage socketMessage = null;
+        if (StringUtils.isEmpty(checkStr)){
+            socketMessage = generateMsg("没有配置该用户名【"+userName+"】的校验规则",null,TypeEnums.CHECK_WRONG_MSG_OPERATE.getCode(),null);
+        }else {
+            socketMessage = generateMsg("成功获得用户名【"+userName+"】的校验规则",null,TypeEnums.CHECK_RIGHT_MSG_OPERATE.getCode(),null);
+            String checkUserNameKey = Constants.CHECK_USERNAME_KEY + session.getId();
+            cache.add(checkUserNameKey,userName);
+        }
+        try {
+            session.getBasicRemote().sendText(JSONObject.toJSONString(socketMessage));
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
     }
 
     public void clearCheckUserName(Session session){
@@ -402,9 +415,7 @@ public class WatchFileService {
 
     private SocketMessage parseMessage(SocketMessage sckmsg,CheckParam checkParam){
         String msg = sckmsg.getMsg();
-        Set<String> errSet = new LinkedHashSet<>();
-        Set<String> lackSet = new LinkedHashSet<>();
-        Set<String> nullSet = new LinkedHashSet<>();
+
         //公共字段
         String[] comParam = Constants.commonParams.split(",");
         List<String> comList = new ArrayList<>(Arrays.asList(comParam));
@@ -424,7 +435,6 @@ public class WatchFileService {
             Pattern pattern = Pattern.compile("GET (/\\w+)+\\?");
             Matcher matcher = pattern.matcher(msg);
             if (!matcher.find()){
-                errSet.add("/\\w+\\?此正则匹配失败");
                 sckmsg.setType(TypeEnums.NOT_CHECK_MSG_OPERATE.getCode());
                 return sckmsg;
             }else{

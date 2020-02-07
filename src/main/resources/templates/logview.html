@@ -27,10 +27,11 @@
                 <span class="mdui-typo-title mdui-text-color-white">日志查看器</span>
                 <span id="status" class="mdui-text-color-red " style="font-size:small">已断开</span>
                 <div class="mdui-toolbar-spacer"></div>
-                <button class="mdui-btn mdui-btn-raised mdui-ripple mdui-color-theme-accent log-watch-btn" onclick="sendMessageToServer('watch')"><span class=" mdui-text-color-white log-watch-span">查看</span></button>
+<!--                <button class="mdui-btn mdui-btn-raised mdui-ripple mdui-color-theme-accent log-watch-btn" onclick="sendMessageToServer('watch')"><span class=" mdui-text-color-white log-watch-span">查看</span></button>-->
                 <button class="mdui-btn mdui-btn-raised mdui-ripple mdui-color-theme-accent" onclick="sendMessageToServer('pause')"><span class=" mdui-text-color-white log-pause-span">暂停</span></button>
                 <button class="mdui-btn mdui-btn-raised mdui-ripple mdui-color-theme-accent" onclick="clearMsg()"><span class=" mdui-text-color-white log-clear-span">清屏</span></button>
 <!--                <button class="mdui-btn mdui-btn-raised mdui-ripple mdui-color-theme-accent" onclick="closeConn()"><span class=" mdui-text-color-white log-clear-span">断开</span></button>-->
+                <button class="mdui-btn mdui-btn-raised mdui-ripple mdui-color-theme-accent" onclick="checkUsername('long')"><span class=" mdui-text-color-white log-clear-span">发送用户名然后查看</span></button>
             </div>
 
         </div>
@@ -91,7 +92,7 @@
                 $('#status').removeClass('mdui-text-color-red');
                 $('#status').addClass('mdui-text-color-green');
                 $('#status').text('已连接');
-                sendMessageToServer("watch");
+
             };
 
             WebSock.webSocket.onmessage = function (ev) {
@@ -146,7 +147,7 @@
                     break;
                 //不校验的消息
                 case 1:
-                    $('.log-watch-btn').hide();
+
 
                     $messageContainer.prepend('<div class="mdui-text-color-black-* keepline log-content"  style="font-size:x-large">'+ data.msg +'</div>');
                     if ($messageContainer.children('div').length>300){
@@ -156,7 +157,7 @@
                     break;
                 //错误的消息
                 case 2:
-                    $('.log-watch-btn').hide();
+
                     var error = data.error;
                     $messageContainer.prepend('<div class="mdui-text-color-red-900 keepline wrong-border mdui-hoverable log-content" mdui-tooltip="{content:\''+error+'\'}" style="font-size:x-large">'+ data.msg +'</div>');
                     if ($messageContainer.children('div').length>300){
@@ -166,7 +167,7 @@
                     break;
                 //正确的消息
                 case 3:
-                    $('.log-watch-btn').hide();
+
                     $messageContainer.prepend('<div class="mdui-text-color-green-900 keepline mdui-hoverable log-content" style="font-size:x-large">'+ data.msg +'</div>');
                     if ($messageContainer.children('div').length>300){
                         console.log("$messageContainer.children('div').length{}:",$messageContainer.children('div'));
@@ -181,6 +182,8 @@
                 case 6:
                     webSock.lastHeartBeat = new Date().getTime();
                     break;
+                case 8:
+                    sendMessageToServer('watch');
                 default:break;
             }
         }
@@ -221,6 +224,10 @@
 
         function closeConn() {
             webSock.webSocket.close();
+        }
+
+        function checkUsername(username) {
+            webSock.webSocket.send(JSON.stringify({msg:{userName:username}}));
         }
 
         function isNull(str) {
