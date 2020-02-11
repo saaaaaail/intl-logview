@@ -5,6 +5,7 @@ import com.alibaba.fastjson.JSONObject;
 import com.iqiyi.intl.logview.cache.Cache;
 import com.iqiyi.intl.logview.constant.Constants;
 import com.iqiyi.intl.logview.dto.CheckParam;
+import com.iqiyi.intl.logview.dto.RuleParam;
 import com.iqiyi.intl.logview.dto.TypeParam;
 import com.iqiyi.intl.logview.enums.MatchEnums;
 import com.iqiyi.intl.logview.enums.TypeEnums;
@@ -309,9 +310,33 @@ public class WatchFileService {
                     }
                     if (isJsonObject(msgBody)){
                         JSONObject jsonObject = JSONObject.parseObject(msgBody);
-                        String tmpMsg = preMsg + "["+JSONObject.toJSONString(jsonObject)+"]"+postMsg;
-                        splitSckMsg.add(generateMsg(tmpMsg,null,null,null));
-                        continue;
+                        if(jsonObject.get("cu")!=null||jsonObject.get("cm")!=null){
+                            JSONArray cu = jsonObject.getJSONArray("cu");
+                            JSONObject cm = jsonObject.getJSONObject("cm");
+                            if (cu!=null){
+                                String groupId = null;
+                                if (cu.size()>=2){
+                                    groupId = UUID.randomUUID().toString().replace("-","");
+                                }
+                                for (Object o : cu) {
+                                    JSONObject jo = ((JSONObject)o);
+                                    if (cm!=null){
+                                        jo.putAll(cm);
+                                    }
+                                    String tmpMsg = preMsg +"["+JSONObject.toJSONString(jo)+"]"+postMsg;
+                                    splitSckMsg.add(generateMsg(tmpMsg,null,null,groupId));
+                                }
+                                continue;
+                            }else {
+                                String tmpMsg = preMsg + "["+JSONObject.toJSONString(cm)+"]"+postMsg;
+                                splitSckMsg.add(generateMsg(tmpMsg,null,null,null));
+                                continue;
+                            }
+                        }else {
+                            String tmpMsg = preMsg + "["+JSONObject.toJSONString(jsonObject)+"]"+postMsg;
+                            splitSckMsg.add(generateMsg(tmpMsg,null,null,null));
+                            continue;
+                        }
                     }
                 }
             }
@@ -506,24 +531,87 @@ public class WatchFileService {
             }
         }
 
-        List<Map<String,String>> error = new ArrayList<>();
-        List<List<TypeParam>> rules = checkParam.getRules();
-        boolean isCorrect = true;
+
+        List<RuleParam> rules = checkParam.getRules();
+        Map<String,String> errorMap = null;
+        boolean isNext;
         for (int i=0;i<rules.size();i++){
-            Map<String,String> errorMap = new HashMap<>();
-            List<TypeParam> typeParams = rules.get(i);
-            for (TypeParam typeParam : typeParams) {
+            isNext=false;
+            //找到匹配的规则后跳出
+            if (errorMap!=null){
+                break;
+            }
+            RuleParam ruleParam = rules.get(i);
+
+            //先校验过滤条件,过滤条件不满足就中断
+            for (TypeParam typeParam: ruleParam.getFilter()){
                 String key = typeParam.getType();
-                Object o = params.get(key);
+                Object o = kvMap.get(key);
                 if (o==null){
                     if ("ntwk".equals(key)&&params.get("net_work")!=null){
                         o = params.get("net_work");
                     }else if ("net_work".equals(key)&&params.get("ntwk")!=null){
                         o = params.get("ntwk");
                     }else {
-                        errorMap.put(typeParam.getType(),"校验的url中无指定的字段");
+                        isNext=true;
+                        break;
+                    }
+                }
+                if (typeParam.getEmpty().equals(1)&&StringUtils.isEmpty(o.toString())){
+                    isNext=true;
+                    break;
+                }
+                if (typeParam.getUseReg()&&StringUtils.isNotEmpty(typeParam.getReg())){
+                    Pattern valuePattern = Pattern.compile(typeParam.getReg());
+                    Matcher valueMatcher = valuePattern.matcher(o.toString());
+                    if (typeParam.getMatch().equals(MatchEnums.BLURRY.getCode())){
+                        if (!valueMatcher.find()){
+                            isNext=true;
+                            break;
+                        }
+                    }else if (typeParam.getMatch().equals(MatchEnums.EXACT.getCode())){
+                        if (!valueMatcher.matches()){
+                            isNext=true;
+                            break;
+                        }
+                    }
+                }else {
+                    ArrayList<String> values = new ArrayList<>(Arrays.asList(typeParam.getValue().split(",")));
+                    if (typeParam.getMatch().equals(MatchEnums.BLURRY.getCode())){
+                        if (isLong(o.toString())||!bullyInValues(o.toString(),values)){
+                            isNext=true;
+                            break;
+                        }
+                    }else if (typeParam.getMatch().equals(MatchEnums.EXACT.getCode())){
+                        if (!exactInValues(o.toString(),values)){
+                            isNext=true;
+                            break;
+                        }
+                    }
+
+                }
+            }
+            if (isNext){
+                continue;
+            }
+
+            errorMap = new HashMap<>();
+            for (TypeParam typeParam: ruleParam.getRule()){
+                String key = typeParam.getType();
+                Object o = kvMap.get(key);
+                if (o==null){
+                    if ("ntwk".equals(key)&&params.get("net_work")!=null){
+                        o = params.get("net_work");
+                    }else if ("net_work".equals(key)&&params.get("ntwk")!=null){
+                        o = params.get("ntwk");
+                    }else {
+                        errorMap.put(typeParam.getType(),"缺少该字段");
                         continue;
                     }
+                }
+                if (typeParam.getEmpty().equals(1)&&StringUtils.isEmpty(o.toString())){
+                    errorMap.put(typeParam.getType(),"值为空");
+                    continue;
                 }
                 if (typeParam.getUseReg()&&StringUtils.isNotEmpty(typeParam.getReg())){
                     Pattern valuePattern = Pattern.compile(typeParam.getReg());
@@ -540,36 +628,28 @@ public class WatchFileService {
                         }
                     }
                 }else {
-                    if (typeParam.getEmpty()==1&&StringUtils.isEmpty(o.toString())){
-                        errorMap.put(typeParam.getType(),"值为空");
-                        continue;
-                    }
-                    if (StringUtils.isNotEmpty(typeParam.getValue())){
-                        if (typeParam.getMatch().equals(MatchEnums.BLURRY.getCode())){
-                            if (isLong(typeParam.getValue())||!o.toString().contains(typeParam.getValue())){
-                                errorMap.put(typeParam.getType(),"值不匹配");
-                                continue;
-                            }
-                        }else if (typeParam.getMatch().equals(MatchEnums.EXACT.getCode())){
-                            if (!o.toString().equals(typeParam.getValue())){
-                                errorMap.put(typeParam.getType(),"值不匹配");
-                                continue;
-                            }
+                    if (typeParam.getMatch().equals(MatchEnums.BLURRY.getCode())){
+                        if (isLong(o.toString())||!o.toString().contains(typeParam.getValue())){
+                            errorMap.put(typeParam.getType(),"值不匹配");
+                            continue;
+                        }
+                    }else if (typeParam.getMatch().equals(MatchEnums.EXACT.getCode())){
+                        if (!o.toString().equals(typeParam.getValue())){
+                            errorMap.put(typeParam.getType(),"值不匹配");
+                            continue;
                         }
                     }
+
                 }
             }
-            if (isCorrect&&errorMap.size()!=0){
-                isCorrect=false;
-            }
-            error.add(errorMap);
         }
-
-        sckmsg.setError(error);
-        if (isCorrect){
+        sckmsg.setError(errorMap);
+        if (errorMap!=null&&errorMap.size()!=0){
+            sckmsg.setType(TypeEnums.WRONG_MEG_OPERATE.getCode());
+        }else if (errorMap!=null){
             sckmsg.setType(TypeEnums.RIGHT_MSG_OPERATE.getCode());
         }else {
-            sckmsg.setType(TypeEnums.WRONG_MEG_OPERATE.getCode());
+            sckmsg.setType(TypeEnums.NOT_CHECK_MSG_OPERATE.getCode());
         }
         return sckmsg;
 //        //判断是否需要校验
@@ -702,7 +782,7 @@ public class WatchFileService {
         return kvMap;
     }
 
-    private SocketMessage generateMsg(String msg,List<Map<String,String>> error,Integer type,String groupId){
+    private SocketMessage generateMsg(String msg,Map<String,String> error,Integer type,String groupId){
         SocketMessage socketMessage =new SocketMessage();
         socketMessage.setMsg(msg);
         socketMessage.setError(error);
@@ -749,6 +829,20 @@ public class WatchFileService {
         String[] ips = ipStr.split(",");
         for (String ip : ips) {
             if (msg.contains(ip)&&msg.startsWith(ip)){return true;}
+        }
+        return false;
+    }
+
+    private boolean exactInValues(String v,List<String> values){
+        for (String value : values) {
+            if (v.equals(value)){return true;}
+        }
+        return false;
+    }
+
+    private boolean bullyInValues(String v,List<String> values){
+        for (String value : values) {
+            if (v.contains(value)){return true;}
         }
         return false;
     }

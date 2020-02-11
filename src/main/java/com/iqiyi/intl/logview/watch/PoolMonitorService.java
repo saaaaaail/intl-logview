@@ -399,7 +399,7 @@ public class PoolMonitorService {
 
     }
 
-    private SocketMessage generateMsg(String msg,List<Map<String,String>> error,Integer type){
+    private SocketMessage generateMsg(String msg,Map<String,String> error,Integer type){
         SocketMessage socketMessage =new SocketMessage();
         socketMessage.setMsg(msg);
         socketMessage.setError(error);

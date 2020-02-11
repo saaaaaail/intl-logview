@@ -32,6 +32,6 @@ public class SocketMessage {
 
     private Integer type;
 
-    private List<Map<String,String>> error;
+    private Map<String,String> error;
 
 }

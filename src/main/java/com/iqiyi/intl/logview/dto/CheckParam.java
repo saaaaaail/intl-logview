@@ -17,5 +17,5 @@ public class CheckParam {
 
     private String reg;
 
-    private List<List<TypeParam>> rules;
+    private List<RuleParam> rules;
 }
