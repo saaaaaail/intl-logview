@@ -9,7 +9,7 @@ package com.iqiyi.intl.logview.constant;
 
 public class Constants {
     //10.3.33.72
-    public static final String SRC_TARGET_IP = "10.3.33.72";
+    public static final String SRC_TARGET_IP = "10.3.33.72,10.3.16.191";
     //accesslog.txt
     //access.log
     public static final String WATCH_FILE = "access.log";
