@@ -9,9 +9,9 @@ public class TypeParam {
 
     private String value;
 
-    private Integer empty;
+    private String empty;
 
-    private Integer match;
+    private String match;
 
     private Boolean useReg;
 

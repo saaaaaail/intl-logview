@@ -11,7 +11,7 @@ public class CheckParam {
 
     private String url;
 
-    private Integer urlMatch;
+    private String urlMatch;
 
     private Boolean useReg;
 

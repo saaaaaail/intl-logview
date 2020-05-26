@@ -506,24 +506,24 @@ public class WatchFileService {
         if (checkParam.getUseReg()&&StringUtils.isNotEmpty(checkParam.getReg())){
             Pattern pattern = Pattern.compile(checkParam.getReg());
             Matcher matcher = pattern.matcher(sckmsg.getUrl());
-            if (checkParam.getUrlMatch().equals(MatchEnums.BLURRY.getCode())){
+            if (checkParam.getUrlMatch().equals(MatchEnums.BLURRY.getCode().toString())){
                 if (!matcher.find()){
                     sckmsg.setType(TypeEnums.NOT_CHECK_MSG_OPERATE.getCode());
                     return sckmsg;
                 }
-            }else if (checkParam.getUrlMatch().equals(MatchEnums.EXACT.getCode())){
+            }else if (checkParam.getUrlMatch().equals(MatchEnums.EXACT.getCode().toString())){
                 if (!matcher.matches()){
                     sckmsg.setType(TypeEnums.NOT_CHECK_MSG_OPERATE.getCode());
                     return sckmsg;
                 }
             }
         }else {
-            if (checkParam.getUrlMatch().equals(MatchEnums.BLURRY.getCode())){
+            if (checkParam.getUrlMatch().equals(MatchEnums.BLURRY.getCode().toString())){
                 if (!sckmsg.getUrl().contains(matchUrl)){
                     sckmsg.setType(TypeEnums.NOT_CHECK_MSG_OPERATE.getCode());
                     return sckmsg;
                 }
-            }else if (checkParam.getUrlMatch().equals(MatchEnums.EXACT.getCode())){
+            }else if (checkParam.getUrlMatch().equals(MatchEnums.EXACT.getCode().toString())){
                 if (!sckmsg.getUrl().equals(matchUrl)){
                     sckmsg.setType(TypeEnums.NOT_CHECK_MSG_OPERATE.getCode());
                     return sckmsg;
@@ -557,19 +557,19 @@ public class WatchFileService {
                         break;
                     }
                 }
-                if (typeParam.getEmpty().equals(1)&&StringUtils.isEmpty(o.toString())){
+                if (typeParam.getEmpty().equals("1")&&StringUtils.isEmpty(o.toString())){
                     isNext=true;
                     break;
                 }
                 if (typeParam.getUseReg()&&StringUtils.isNotEmpty(typeParam.getReg())){
                     Pattern valuePattern = Pattern.compile(typeParam.getReg());
                     Matcher valueMatcher = valuePattern.matcher(o.toString());
-                    if (typeParam.getMatch().equals(MatchEnums.BLURRY.getCode())){
+                    if (typeParam.getMatch().equals(MatchEnums.BLURRY.getCode().toString())){
                         if (!valueMatcher.find()){
                             isNext=true;
                             break;
                         }
-                    }else if (typeParam.getMatch().equals(MatchEnums.EXACT.getCode())){
+                    }else if (typeParam.getMatch().equals(MatchEnums.EXACT.getCode().toString())){
                         if (!valueMatcher.matches()){
                             isNext=true;
                             break;
@@ -577,18 +577,17 @@ public class WatchFileService {
                     }
                 }else {
                     ArrayList<String> values = new ArrayList<>(Arrays.asList(typeParam.getValue().split(",")));
-                    if (typeParam.getMatch().equals(MatchEnums.BLURRY.getCode())){
+                    if (typeParam.getMatch().equals(MatchEnums.BLURRY.getCode().toString())){
                         if (isLong(o.toString())||!bullyInValues(o.toString(),values)){
                             isNext=true;
                             break;
                         }
-                    }else if (typeParam.getMatch().equals(MatchEnums.EXACT.getCode())){
+                    }else if (typeParam.getMatch().equals(MatchEnums.EXACT.getCode().toString())){
                         if (!exactInValues(o.toString(),values)){
                             isNext=true;
                             break;
                         }
                     }
-
                 }
             }
             if (isNext){
@@ -609,31 +608,31 @@ public class WatchFileService {
                         continue;
                     }
                 }
-                if (typeParam.getEmpty().equals(1)&&StringUtils.isEmpty(o.toString())){
+                if (typeParam.getEmpty().equals("1")&&StringUtils.isEmpty(o.toString())){
                     errorMap.put(typeParam.getType(),"值为空");
                     continue;
                 }
                 if (typeParam.getUseReg()&&StringUtils.isNotEmpty(typeParam.getReg())){
                     Pattern valuePattern = Pattern.compile(typeParam.getReg());
                     Matcher valueMatcher = valuePattern.matcher(o.toString());
-                    if (typeParam.getMatch().equals(MatchEnums.BLURRY.getCode())){
+                    if (typeParam.getMatch().equals(MatchEnums.BLURRY.getCode().toString())){
                         if (!valueMatcher.find()){
                             errorMap.put(typeParam.getType(),"值不匹配");
                             continue;
                         }
-                    }else if (typeParam.getMatch().equals(MatchEnums.EXACT.getCode())){
+                    }else if (typeParam.getMatch().equals(MatchEnums.EXACT.getCode().toString())){
                         if (!valueMatcher.matches()){
                             errorMap.put(typeParam.getType(),"值不匹配");
                             continue;
                         }
                     }
                 }else {
-                    if (typeParam.getMatch().equals(MatchEnums.BLURRY.getCode())){
+                    if (typeParam.getMatch().equals(MatchEnums.BLURRY.getCode().toString())){
                         if (isLong(o.toString())||!o.toString().contains(typeParam.getValue())){
                             errorMap.put(typeParam.getType(),"值不匹配");
                             continue;
                         }
-                    }else if (typeParam.getMatch().equals(MatchEnums.EXACT.getCode())){
+                    }else if (typeParam.getMatch().equals(MatchEnums.EXACT.getCode().toString())){
                         if (!o.toString().equals(typeParam.getValue())){
                             errorMap.put(typeParam.getType(),"值不匹配");
                             continue;

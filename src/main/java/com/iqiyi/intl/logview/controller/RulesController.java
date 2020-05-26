@@ -31,4 +31,14 @@ public class RulesController {
         }
         result.setSuccessResult(checkParam.getUserName());
     }
+
+    @RequestMapping(value = "rules-config",method = RequestMethod.GET)
+    public void rulesConfig(Result<CheckParam> result,@RequestParam String userName){
+        String checkStr = rulesService.selectByUserName(userName);
+        CheckParam checkParam = null;
+        if (StringUtils.isNotEmpty(checkStr)){
+            checkParam = JSONObject.parseObject(checkStr,CheckParam.class);
+        }
+        result.setSuccessResult(checkParam);
+    }
 }
