@@ -28,13 +28,14 @@ import java.util.stream.Collectors;
 
 /**
  * @program: intl-logview
- * @description: 采用定时线程实时监听文件变化
+ * @description: 未使用
  * @author: yangfan
  * @create: 2019/12/17 11:16
  */
 
 @Service
 @Slf4j
+@Deprecated
 public class PoolMonitorService {
 
     @Autowired

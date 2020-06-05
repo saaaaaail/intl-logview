@@ -9,6 +9,7 @@ import com.iqiyi.intl.logview.dto.RuleParam;
 import com.iqiyi.intl.logview.dto.TypeParam;
 import com.iqiyi.intl.logview.enums.MatchEnums;
 import com.iqiyi.intl.logview.enums.TypeEnums;
+import com.iqiyi.intl.logview.exception.IntlRuntimeException;
 import com.iqiyi.intl.logview.service.RulesService;
 import com.iqiyi.intl.logview.websocket.SocketMessage;
 import lombok.extern.slf4j.Slf4j;
@@ -55,6 +56,7 @@ public class WatchFileService {
     private boolean isPause = false;
 
     public void startProcess(Session host, Map<Session, SocketMessage> sessionMap,SocketMessage socketMessage) throws IOException {
+        log.info("接入用户id:"+host.getId());
         log.info("校验是否第一次读取文件");
         String watchServiceKey = Constants.WATCH_SERVICE_KEY + host.getId();
         String poolKey = Constants.THREAD_POOL+host.getId();
@@ -439,218 +441,224 @@ public class WatchFileService {
     }
 
     private SocketMessage parseMessage(SocketMessage sckmsg,CheckParam checkParam){
-        String msg = sckmsg.getMsg();
+        try{
+            String msg = sckmsg.getMsg();
 
-        //公共字段
-        String[] comParam = Constants.commonParams.split(",");
-        List<String> comList = new ArrayList<>(Arrays.asList(comParam));
+            //公共字段
+            String[] comParam = Constants.commonParams.split(",");
+            List<String> comList = new ArrayList<>(Arrays.asList(comParam));
 
-        List<String> allParamList = new ArrayList<>();
-        allParamList.addAll(comList);
-        allParamList.addAll(Arrays.asList(Constants.t_20_params.split(",")));
-        allParamList.addAll(Arrays.asList(Constants.t_21_params.split(",")));
-        //所有字段
-        allParamList = allParamList.stream().distinct().collect(Collectors.toList());
-        Map<String,String> kvMap = new HashMap<>();
-        Pattern getPattern = Pattern.compile("\"(GET)[ ]/");
-        Matcher getMatcher = getPattern.matcher(msg);
-        Pattern postPattern = Pattern.compile("\"(POST)[ ]/");
-        Matcher postMatcher = postPattern.matcher(msg);
-        if (getMatcher.find()){
-            Pattern pattern = Pattern.compile("GET (/\\w+)+\\?");
-            Matcher matcher = pattern.matcher(msg);
-            if (!matcher.find()){
-                sckmsg.setType(TypeEnums.NOT_CHECK_MSG_OPERATE.getCode());
-                return sckmsg;
-            }else{
-                String uri = msg.substring(matcher.start()+4,matcher.end()-1);
-                sckmsg.setUrl(uri);
-            }
-            sckmsg.setMethod("GET");
-            kvMap = getCheck(msg,matcher.end());
-        }else if (postMatcher.find()){
-            sckmsg.setMethod("POST");
-            Pattern urlPattern1 = Pattern.compile("POST (/\\w+)+\\?");
-            Matcher matcher = urlPattern1.matcher(msg);
-            if (matcher.find()){
-                String uri = msg.substring(matcher.start()+5,matcher.end()-1);
-                sckmsg.setUrl(uri);
-            }else {
-                Pattern urlPattern2 = Pattern.compile("POST (/\\w+)+ ");
-                Matcher matcher1 = urlPattern2.matcher(msg);
-                if (matcher1.find()){
-                    String uri = msg.substring(matcher1.start()+5,matcher1.end()-1);
-                    sckmsg.setUrl(uri);
-                }
-            }
-            kvMap = postCheck(msg);
-        }
-
-        //校验前构建消息体
-        sckmsg.setIp(msg.substring(0,msg.indexOf(" ")));
-        Pattern timePattern = Pattern.compile("\\[\\d{4}-\\d{2}-\\d{2} \\d{2}:\\d{2}:\\d{2}]");
-        Matcher timeMatcher = timePattern.matcher(msg);
-        if (timeMatcher.find()){
-            String time = msg.substring(timeMatcher.start()+1,timeMatcher.end()-1);
-            Long timestamp = parseTimestamp(time);
-            sckmsg.setTime(timestamp);
-        }
-        JSONObject params = new JSONObject();
-        for (Map.Entry<String, String> entry : kvMap.entrySet()) {
-            params.put(entry.getKey(),entry.getValue());
-        }
-        sckmsg.setParams(params);
-
-        //判断url是否需要校验
-        String matchUrl = checkParam.getUrl();
-        if (checkParam.getUseReg()&&StringUtils.isNotEmpty(checkParam.getReg())){
-            Pattern pattern = Pattern.compile(checkParam.getReg());
-            Matcher matcher = pattern.matcher(sckmsg.getUrl());
-            if (checkParam.getUrlMatch().equals(MatchEnums.BLURRY.getCode().toString())){
+            List<String> allParamList = new ArrayList<>();
+            allParamList.addAll(comList);
+            allParamList.addAll(Arrays.asList(Constants.t_20_params.split(",")));
+            allParamList.addAll(Arrays.asList(Constants.t_21_params.split(",")));
+            //所有字段
+            allParamList = allParamList.stream().distinct().collect(Collectors.toList());
+            Map<String,String> kvMap = new HashMap<>();
+            Pattern getPattern = Pattern.compile("\"(GET)[ ]/");
+            Matcher getMatcher = getPattern.matcher(msg);
+            Pattern postPattern = Pattern.compile("\"(POST)[ ]/");
+            Matcher postMatcher = postPattern.matcher(msg);
+            if (getMatcher.find()){
+                Pattern pattern = Pattern.compile("GET (/\\w+)+\\?");
+                Matcher matcher = pattern.matcher(msg);
                 if (!matcher.find()){
                     sckmsg.setType(TypeEnums.NOT_CHECK_MSG_OPERATE.getCode());
                     return sckmsg;
+                }else{
+                    String uri = msg.substring(matcher.start()+4,matcher.end()-1);
+                    sckmsg.setUrl(uri);
                 }
-            }else if (checkParam.getUrlMatch().equals(MatchEnums.EXACT.getCode().toString())){
-                if (!matcher.matches()){
-                    sckmsg.setType(TypeEnums.NOT_CHECK_MSG_OPERATE.getCode());
-                    return sckmsg;
+                sckmsg.setMethod("GET");
+                kvMap = getCheck(msg,matcher.end());
+            }else if (postMatcher.find()){
+                sckmsg.setMethod("POST");
+                Pattern urlPattern1 = Pattern.compile("POST (/\\w+)+\\?");
+                Matcher matcher = urlPattern1.matcher(msg);
+                if (matcher.find()){
+                    String uri = msg.substring(matcher.start()+5,matcher.end()-1);
+                    sckmsg.setUrl(uri);
+                }else {
+                    Pattern urlPattern2 = Pattern.compile("POST (/\\w+(\\.\\w+)*)+");
+                    Matcher matcher1 = urlPattern2.matcher(msg);
+                    if (matcher1.find()){
+                        String uri = msg.substring(matcher1.start()+5,matcher1.end()-1);
+                        sckmsg.setUrl(uri);
+                    }
+                }
+                kvMap = postCheck(msg);
+            }
+
+            //校验前构建消息体
+            sckmsg.setIp(msg.substring(0,msg.indexOf(" ")));
+            Pattern timePattern = Pattern.compile("\\[\\d{4}-\\d{2}-\\d{2} \\d{2}:\\d{2}:\\d{2}]");
+            Matcher timeMatcher = timePattern.matcher(msg);
+            if (timeMatcher.find()){
+                String time = msg.substring(timeMatcher.start()+1,timeMatcher.end()-1);
+                Long timestamp = parseTimestamp(time);
+                sckmsg.setTime(timestamp);
+            }
+            JSONObject params = new JSONObject();
+            for (Map.Entry<String, String> entry : kvMap.entrySet()) {
+                params.put(entry.getKey(),entry.getValue());
+            }
+            sckmsg.setParams(params);
+
+            //判断url是否需要校验
+            String matchUrl = checkParam.getUrl();
+            if (checkParam.getUseReg()&&StringUtils.isNotEmpty(checkParam.getReg())){
+                Pattern pattern = Pattern.compile(checkParam.getReg());
+                Matcher matcher = pattern.matcher(sckmsg.getUrl());
+                if (checkParam.getUrlMatch().equals(MatchEnums.BLURRY.getCode().toString())){
+                    if (!matcher.find()){
+                        sckmsg.setType(TypeEnums.NOT_CHECK_MSG_OPERATE.getCode());
+                        return sckmsg;
+                    }
+                }else if (checkParam.getUrlMatch().equals(MatchEnums.EXACT.getCode().toString())){
+                    if (!matcher.matches()){
+                        sckmsg.setType(TypeEnums.NOT_CHECK_MSG_OPERATE.getCode());
+                        return sckmsg;
+                    }
+                }
+            }else {
+                if (checkParam.getUrlMatch().equals(MatchEnums.BLURRY.getCode().toString())){
+                    if (!sckmsg.getUrl().contains(matchUrl)){
+                        sckmsg.setType(TypeEnums.NOT_CHECK_MSG_OPERATE.getCode());
+                        return sckmsg;
+                    }
+                }else if (checkParam.getUrlMatch().equals(MatchEnums.EXACT.getCode().toString())){
+                    if (!sckmsg.getUrl().equals(matchUrl)){
+                        sckmsg.setType(TypeEnums.NOT_CHECK_MSG_OPERATE.getCode());
+                        return sckmsg;
+                    }
                 }
             }
-        }else {
-            if (checkParam.getUrlMatch().equals(MatchEnums.BLURRY.getCode().toString())){
-                if (!sckmsg.getUrl().contains(matchUrl)){
-                    sckmsg.setType(TypeEnums.NOT_CHECK_MSG_OPERATE.getCode());
-                    return sckmsg;
+
+
+            List<RuleParam> rules = checkParam.getRules();
+            Map<String,String> errorMap = null;
+            boolean isNext;
+            for (int i=0;i<rules.size();i++){
+                isNext=false;
+                //找到匹配的规则后跳出
+                if (errorMap!=null){
+                    break;
                 }
-            }else if (checkParam.getUrlMatch().equals(MatchEnums.EXACT.getCode().toString())){
-                if (!sckmsg.getUrl().equals(matchUrl)){
-                    sckmsg.setType(TypeEnums.NOT_CHECK_MSG_OPERATE.getCode());
-                    return sckmsg;
-                }
-            }
-        }
+                RuleParam ruleParam = rules.get(i);
 
-
-        List<RuleParam> rules = checkParam.getRules();
-        Map<String,String> errorMap = null;
-        boolean isNext;
-        for (int i=0;i<rules.size();i++){
-            isNext=false;
-            //找到匹配的规则后跳出
-            if (errorMap!=null){
-                break;
-            }
-            RuleParam ruleParam = rules.get(i);
-
-            //先校验过滤条件,过滤条件不满足就中断
-            for (TypeParam typeParam: ruleParam.getFilter()){
-                String key = typeParam.getType();
-                Object o = kvMap.get(key);
-                if (o==null){
-                    if ("ntwk".equals(key)&&params.get("net_work")!=null){
-                        o = params.get("net_work");
-                    }else if ("net_work".equals(key)&&params.get("ntwk")!=null){
-                        o = params.get("ntwk");
-                    }else {
+                //先校验过滤条件,过滤条件不满足就中断
+                for (TypeParam typeParam: ruleParam.getFilter()){
+                    String key = typeParam.getType();
+                    Object o = kvMap.get(key);
+                    if (o==null){
+                        if ("ntwk".equals(key)&&params.get("net_work")!=null){
+                            o = params.get("net_work");
+                        }else if ("net_work".equals(key)&&params.get("ntwk")!=null){
+                            o = params.get("ntwk");
+                        }else {
+                            isNext=true;
+                            break;
+                        }
+                    }
+                    if (typeParam.getEmpty().equals("1")&&StringUtils.isEmpty(o.toString())){
                         isNext=true;
                         break;
                     }
-                }
-                if (typeParam.getEmpty().equals("1")&&StringUtils.isEmpty(o.toString())){
-                    isNext=true;
-                    break;
-                }
-                if (typeParam.getUseReg()&&StringUtils.isNotEmpty(typeParam.getReg())){
-                    Pattern valuePattern = Pattern.compile(typeParam.getReg());
-                    Matcher valueMatcher = valuePattern.matcher(o.toString());
-                    if (typeParam.getMatch().equals(MatchEnums.BLURRY.getCode().toString())){
-                        if (!valueMatcher.find()){
-                            isNext=true;
-                            break;
+                    if (typeParam.getUseReg()&&StringUtils.isNotEmpty(typeParam.getReg())){
+                        Pattern valuePattern = Pattern.compile(typeParam.getReg());
+                        Matcher valueMatcher = valuePattern.matcher(o.toString());
+                        if (typeParam.getMatch().equals(MatchEnums.BLURRY.getCode().toString())){
+                            if (!valueMatcher.find()){
+                                isNext=true;
+                                break;
+                            }
+                        }else if (typeParam.getMatch().equals(MatchEnums.EXACT.getCode().toString())){
+                            if (!valueMatcher.matches()){
+                                isNext=true;
+                                break;
+                            }
                         }
-                    }else if (typeParam.getMatch().equals(MatchEnums.EXACT.getCode().toString())){
-                        if (!valueMatcher.matches()){
-                            isNext=true;
-                            break;
-                        }
-                    }
-                }else {
-                    ArrayList<String> values = new ArrayList<>(Arrays.asList(typeParam.getValue().split(",")));
-                    if (typeParam.getMatch().equals(MatchEnums.BLURRY.getCode().toString())){
-                        if (isLong(o.toString())||!bullyInValues(o.toString(),values)){
-                            isNext=true;
-                            break;
-                        }
-                    }else if (typeParam.getMatch().equals(MatchEnums.EXACT.getCode().toString())){
-                        if (!exactInValues(o.toString(),values)){
-                            isNext=true;
-                            break;
-                        }
-                    }
-                }
-            }
-            if (isNext){
-                continue;
-            }
-
-            errorMap = new HashMap<>();
-            for (TypeParam typeParam: ruleParam.getRule()){
-                String key = typeParam.getType();
-                Object o = kvMap.get(key);
-                if (o==null){
-                    if ("ntwk".equals(key)&&params.get("net_work")!=null){
-                        o = params.get("net_work");
-                    }else if ("net_work".equals(key)&&params.get("ntwk")!=null){
-                        o = params.get("ntwk");
                     }else {
-                        errorMap.put(typeParam.getType(),"缺少该字段");
-                        continue;
+                        ArrayList<String> values = new ArrayList<>(Arrays.asList(typeParam.getValue().split(",")));
+                        if (typeParam.getMatch().equals(MatchEnums.BLURRY.getCode().toString())){
+                            if (isLong(o.toString())||!bullyInValues(o.toString(),values)){
+                                isNext=true;
+                                break;
+                            }
+                        }else if (typeParam.getMatch().equals(MatchEnums.EXACT.getCode().toString())){
+                            if (!exactInValues(o.toString(),values)){
+                                isNext=true;
+                                break;
+                            }
+                        }
                     }
                 }
-                if (typeParam.getEmpty().equals("1")&&StringUtils.isEmpty(o.toString())){
-                    errorMap.put(typeParam.getType(),"值为空");
+                if (isNext){
                     continue;
                 }
-                if (typeParam.getUseReg()&&StringUtils.isNotEmpty(typeParam.getReg())){
-                    Pattern valuePattern = Pattern.compile(typeParam.getReg());
-                    Matcher valueMatcher = valuePattern.matcher(o.toString());
-                    if (typeParam.getMatch().equals(MatchEnums.BLURRY.getCode().toString())){
-                        if (!valueMatcher.find()){
-                            errorMap.put(typeParam.getType(),"值不匹配");
-                            continue;
-                        }
-                    }else if (typeParam.getMatch().equals(MatchEnums.EXACT.getCode().toString())){
-                        if (!valueMatcher.matches()){
-                            errorMap.put(typeParam.getType(),"值不匹配");
-                            continue;
-                        }
-                    }
-                }else {
-                    if (typeParam.getMatch().equals(MatchEnums.BLURRY.getCode().toString())){
-                        if (isLong(o.toString())||!o.toString().contains(typeParam.getValue())){
-                            errorMap.put(typeParam.getType(),"值不匹配");
-                            continue;
-                        }
-                    }else if (typeParam.getMatch().equals(MatchEnums.EXACT.getCode().toString())){
-                        if (!o.toString().equals(typeParam.getValue())){
-                            errorMap.put(typeParam.getType(),"值不匹配");
-                            continue;
-                        }
-                    }
 
+                errorMap = new HashMap<>();
+                for (TypeParam typeParam: ruleParam.getRule()){
+                    String key = typeParam.getType();
+                    Object o = kvMap.get(key);
+                    if (o==null){
+                        if ("ntwk".equals(key)&&params.get("net_work")!=null){
+                            o = params.get("net_work");
+                        }else if ("net_work".equals(key)&&params.get("ntwk")!=null){
+                            o = params.get("ntwk");
+                        }else {
+                            errorMap.put(typeParam.getType(),"缺少该字段");
+                            continue;
+                        }
+                    }
+                    if (typeParam.getEmpty().equals("1")&&StringUtils.isEmpty(o.toString())){
+                        errorMap.put(typeParam.getType(),"值为空");
+                        continue;
+                    }
+                    if (typeParam.getUseReg()&&StringUtils.isNotEmpty(typeParam.getReg())){
+                        Pattern valuePattern = Pattern.compile(typeParam.getReg());
+                        Matcher valueMatcher = valuePattern.matcher(o.toString());
+                        if (typeParam.getMatch().equals(MatchEnums.BLURRY.getCode().toString())){
+                            if (!valueMatcher.find()){
+                                errorMap.put(typeParam.getType(),"值不匹配");
+                                continue;
+                            }
+                        }else if (typeParam.getMatch().equals(MatchEnums.EXACT.getCode().toString())){
+                            if (!valueMatcher.matches()){
+                                errorMap.put(typeParam.getType(),"值不匹配");
+                                continue;
+                            }
+                        }
+                    }else {
+                        if (typeParam.getMatch().equals(MatchEnums.BLURRY.getCode().toString())){
+                            if (isLong(o.toString())||!o.toString().contains(typeParam.getValue())){
+                                errorMap.put(typeParam.getType(),"值不匹配");
+                                continue;
+                            }
+                        }else if (typeParam.getMatch().equals(MatchEnums.EXACT.getCode().toString())){
+                            if (!o.toString().equals(typeParam.getValue())){
+                                errorMap.put(typeParam.getType(),"值不匹配");
+                                continue;
+                            }
+                        }
+
+                    }
                 }
             }
+            sckmsg.setError(errorMap);
+            if (errorMap!=null&&errorMap.size()!=0){
+                sckmsg.setType(TypeEnums.WRONG_MEG_OPERATE.getCode());
+            }else if (errorMap!=null){
+                sckmsg.setType(TypeEnums.RIGHT_MSG_OPERATE.getCode());
+            }else {
+                sckmsg.setType(TypeEnums.NOT_CHECK_MSG_OPERATE.getCode());
+            }
+            return sckmsg;
+        }catch (Exception e){
+            log.error("消息解析错误:"+e.getMessage()+" sckMsg:"+JSONObject.toJSONString(sckmsg));
+            throw new IntlRuntimeException("消息解析错误:"+e.getMessage()+" sckMsg:"+JSONObject.toJSONString(sckmsg));
         }
-        sckmsg.setError(errorMap);
-        if (errorMap!=null&&errorMap.size()!=0){
-            sckmsg.setType(TypeEnums.WRONG_MEG_OPERATE.getCode());
-        }else if (errorMap!=null){
-            sckmsg.setType(TypeEnums.RIGHT_MSG_OPERATE.getCode());
-        }else {
-            sckmsg.setType(TypeEnums.NOT_CHECK_MSG_OPERATE.getCode());
-        }
-        return sckmsg;
+
 //        //判断是否需要校验
 //        String logTypeId = kvMap.get("t");
 //        if (StringUtils.isEmpty(logTypeId)||StringUtils.isNotEmpty(logTypeId)&&!"20".equals(logTypeId)&&!"21".equals(logTypeId)){
@@ -733,7 +741,7 @@ public class WatchFileService {
         }
 
         //判断param参数
-        Pattern pattern = Pattern.compile("/\\w+\\?");
+        Pattern pattern = Pattern.compile("/\\w+(\\.\\w+)*\\?");
         Matcher matcher = pattern.matcher(msg);
         if (matcher.find()){
             String startParams = msg.substring(matcher.end());
